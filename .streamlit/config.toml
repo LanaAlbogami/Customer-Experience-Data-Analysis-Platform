@@ -1,0 +1,10 @@
+[theme]
+# Navy + Orange + Green palette (inspired by the SDAIA look, not an official brand file)
+primaryColor = "#E8871E"            # Orange — buttons, active nav item, links
+backgroundColor = "#F5F6FA"         # App background
+secondaryBackgroundColor = "#FFFFFF" # Cards / sidebar contrast
+textColor = "#1E2233"               # Main text
+font = "sans serif"
+
+[server]
+headless = true
