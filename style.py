@@ -66,14 +66,14 @@ def apply_theme():
 
         /* ---- Buttons ---- */
         .stButton > button {{
-            background-color: {COLORS['orange']};
+            background-color: {COLORS['navy_light']};
             color: #FFFFFF;
             border-radius: 8px;
             border: none;
             font-weight: 600;
         }}
         .stButton > button:hover {{
-            background-color: {COLORS['navy_light']};
+            background-color: {COLORS['orange']};
         }}
 
         /* ---- App background ---- */
