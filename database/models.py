@@ -85,7 +85,7 @@ class MeasurementRecord(Base):
     participants_count: Mapped[int] = mapped_column(
       "ParticipantsCount",
       Integer,
-      nullable=False,     
+      nullable=True,     
      )
 
     review: Mapped[str | None] = mapped_column(
