@@ -10,21 +10,21 @@ Usage, at the top of each page:
 
 import streamlit as st
 
-# ---- Color palette: Navy + Orange + Green (inspired by the SDAIA look) ----
+# ---- Color palette: Navy + Purple + Green (same as تصور_الموقع.html mockup) ----
 COLORS = {
-    "navy":         "#0F2C4C",   # sidebar background, headings
-    "navy_light":   "#1F3F63",   # sidebar hover
-    "orange":       "#E8871E",   # primary / active state / buttons / links
-    "orange_light": "#FDEEDC",   # soft highlight / info boxes
-    "green":        "#1F9D55",   # success / positive KPI
-    "green_light":  "#E3F6EA",
+    "navy":         "#16213E",   # sidebar background, headings
+    "navy_light":   "#22335C",   # sidebar hover
+    "purple":       "#6C4AB6",   # primary / active state / buttons / links
+    "purple_light": "#EFEAFA",   # soft highlight / info boxes
+    "green":        "#2FA88E",   # success / positive KPI
+    "green_light":  "#E4F6F1",
     "bg":           "#F5F6FA",   # page background
     "card":         "#FFFFFF",   # card background
     "text":         "#1E2233",   # main text
     "muted":        "#7A7F94",   # secondary text
     "border":       "#E7E8F1",
-    "danger":       "#D64545",   # negative KPI / errors
-    "danger_light": "#FBE4E4",
+    "danger":       "#E0654F",   # negative KPI / errors
+    "danger_light": "#FCEBE7",
 }
 
 
@@ -52,7 +52,7 @@ def apply_theme():
             background-color: {COLORS['navy_light']};
         }}
         section[data-testid="stSidebarNav"] a[aria-current="page"] {{
-            background-color: {COLORS['orange']};
+            background-color: {COLORS['purple']};
             color: #FFFFFF !important;
         }}
 
@@ -66,14 +66,14 @@ def apply_theme():
 
         /* ---- Buttons ---- */
         .stButton > button {{
-            background-color: {COLORS['navy_light']};
+            background-color: {COLORS['purple']};
             color: #FFFFFF;
             border-radius: 8px;
             border: none;
             font-weight: 600;
         }}
         .stButton > button:hover {{
-            background-color: {COLORS['orange']};
+            background-color: {COLORS['navy_light']};
         }}
 
         /* ---- App background ---- */
