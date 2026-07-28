@@ -1,0 +1,10 @@
+[theme]
+# Navy + Purple + Green palette — same as the original HTML mockup (تصور_الموقع.html)
+primaryColor = "#6C4AB6"            # Purple — buttons, active nav item, links
+backgroundColor = "#F5F6FA"         # App background
+secondaryBackgroundColor = "#FFFFFF" # Cards / sidebar contrast
+textColor = "#1E2233"               # Main text
+font = "sans serif"
+
+[server]
+headless = true
