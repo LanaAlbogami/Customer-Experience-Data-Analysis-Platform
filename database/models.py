@@ -192,3 +192,4 @@ class Indicator(Base):
      results: Mapped[list["IndicatorResult"]] = relationship(
           back_populates="indicator"
      ) 
+
