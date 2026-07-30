@@ -407,3 +407,524 @@ def clear_all_records():
         session.commit()
     finally:
         session.close()
+
+def _get_or_create_department(
+    session,
+    department_name,
+):
+    """
+    جلب القسم من قاعدة البيانات،
+    أو إنشاؤه إذا لم يكن موجودًا.
+    """
+
+    department = (
+        session.query(Department)
+        .filter(
+            Department.department_name
+            == department_name
+        )
+        .first()
+    )
+
+    if department is None:
+        department = Department(
+            department_name=department_name
+        )
+
+        session.add(department)
+        session.flush()
+
+    return department
+
+
+def _get_or_create_service(
+    session,
+    department,
+    service_name,
+):
+    """
+    جلب الخدمة التابعة للقسم،
+    أو إنشاؤها إذا لم تكن موجودة.
+    """
+
+    service = (
+        session.query(Service)
+        .filter(
+            Service.department_id
+            == department.department_id,
+            Service.service_name
+            == service_name,
+        )
+        .first()
+    )
+
+    if service is None:
+        service = Service(
+            department_id=department.department_id,
+            service_name=service_name,
+        )
+
+        session.add(service)
+        session.flush()
+
+    return service
+
+
+def _append_uploaded_review(
+    old_review,
+    new_review,
+):
+    """
+    دمج التعليقات القديمة والجديدة
+    بدون تكرار.
+    """
+
+    if not new_review:
+        return old_review
+
+    if not old_review:
+        return new_review
+
+    existing_comments = {
+        line.strip().lower()
+        for line in old_review.splitlines()
+        if line.strip()
+    }
+
+    comments_to_add = []
+
+    for line in new_review.splitlines():
+        comment = line.strip()
+
+        if not comment:
+            continue
+
+        normalized_comment = comment.lower()
+
+        if normalized_comment in existing_comments:
+            continue
+
+        existing_comments.add(
+            normalized_comment
+        )
+
+        comments_to_add.append(comment)
+
+    if not comments_to_add:
+        return old_review
+
+    return (
+        old_review
+        + "\n"
+        + "\n".join(comments_to_add)
+    )
+
+
+def _get_previous_values_in_session(
+    session,
+    service_id,
+    year,
+    period,
+):
+    """
+    جلب قيم المؤشرات من الفترة السابقة
+    باستخدام نفس جلسة قاعدة البيانات.
+    """
+
+    previous_year, previous_code = (
+        previous_period(year, period)
+    )
+
+    rows = (
+        session.query(
+            Indicator.indicator_name,
+            IndicatorResult.current_value,
+        )
+        .join(
+            IndicatorResult,
+            IndicatorResult.indicator_id
+            == Indicator.indicator_id,
+        )
+        .join(
+            MeasurementRecord,
+            MeasurementRecord.record_id
+            == IndicatorResult.record_id,
+        )
+        .filter(
+            MeasurementRecord.service_id
+            == service_id,
+            MeasurementRecord.year
+            == previous_year,
+            MeasurementRecord.period
+            == previous_code,
+        )
+        .all()
+    )
+
+    return {
+        indicator_name: current_value
+        for indicator_name, current_value
+        in rows
+    }
+
+
+def save_uploaded_records(
+    records,
+    targets=None,
+):
+    """
+    حفظ مجموعة سجلات قادمة من ملف Excel.
+
+    شكل كل سجل متوقع:
+
+    {
+        "department": "اسم القسم",
+        "service": "اسم الخدمة",
+        "year": 2025,
+        "period": "H1",
+        "participants": 100,
+        "review": "التعليقات",
+        "indicators": {
+            "CSAT": 85.5,
+            "CES": 42.0,
+            "NPS": 30.0,
+        }
+    }
+
+    يمكن تمرير المستهدفات:
+
+    {
+        "CSAT": 85,
+        "CES": 76,
+        "NPS": 69,
+    }
+    """
+
+    if not records:
+        return {
+            "ok": False,
+            "errors": [
+                "لا توجد بيانات جاهزة للحفظ."
+            ],
+            "inserted_records": 0,
+            "updated_records": 0,
+            "saved_indicators": 0,
+        }
+
+    targets = targets or DEFAULT_TARGETS
+
+    inserted_records = 0
+    updated_records = 0
+    saved_indicators = 0
+
+    # نرتب السجلات زمنيًا حتى تكون
+    # القيمة السابقة صحيحة.
+    sorted_records = sorted(
+        records,
+        key=lambda record: (
+            int(record["year"]),
+            1 if record["period"] == "H1" else 2,
+        ),
+    )
+
+    session = SessionLocal()
+
+    try:
+        indicator_rows = {
+            indicator.indicator_name: indicator
+            for indicator
+            in session.query(Indicator).all()
+        }
+
+        for uploaded_record in sorted_records:
+            department_name = str(
+                uploaded_record["department"]
+            ).strip()
+
+            service_name = str(
+                uploaded_record["service"]
+            ).strip()
+
+            year = int(
+                uploaded_record["year"]
+            )
+
+            period = str(
+                uploaded_record["period"]
+            ).strip()
+
+            participants = int(
+                uploaded_record.get(
+                    "participants",
+                    0,
+                )
+            )
+
+            review = uploaded_record.get(
+                "review"
+            )
+
+            indicator_values = (
+                uploaded_record.get(
+                    "indicators",
+                    {}
+                )
+            )
+
+            if not department_name:
+                raise ValueError(
+                    "يوجد سجل بدون اسم قسم."
+                )
+
+            if not service_name:
+                raise ValueError(
+                    "يوجد سجل بدون اسم خدمة."
+                )
+
+            if period not in PERIODS:
+                raise ValueError(
+                    f"الفترة غير صحيحة: {period}. "
+                    "يجب أن تكون H1 أو H2."
+                )
+
+            if participants < 0:
+                raise ValueError(
+                    "عدد المشاركين لا يمكن "
+                    "أن يكون سالبًا."
+                )
+
+            department = (
+                _get_or_create_department(
+                    session=session,
+                    department_name=(
+                        department_name
+                    ),
+                )
+            )
+
+            service = (
+                _get_or_create_service(
+                    session=session,
+                    department=department,
+                    service_name=service_name,
+                )
+            )
+
+            previous_values = (
+                _get_previous_values_in_session(
+                    session=session,
+                    service_id=(
+                        service.service_id
+                    ),
+                    year=year,
+                    period=period,
+                )
+            )
+
+            measurement_record = (
+                session.query(
+                    MeasurementRecord
+                )
+                .filter(
+                    MeasurementRecord.service_id
+                    == service.service_id,
+                    MeasurementRecord.year
+                    == year,
+                    MeasurementRecord.period
+                    == period,
+                )
+                .first()
+            )
+
+            if measurement_record is None:
+                measurement_record = (
+                    MeasurementRecord(
+                        service_id=(
+                            service.service_id
+                        ),
+                        year=year,
+                        period=period,
+                        participants_count=(
+                            participants
+                        ),
+                        review=review,
+                    )
+                )
+
+                session.add(
+                    measurement_record
+                )
+
+                session.flush()
+
+                inserted_records += 1
+
+            else:
+                measurement_record.participants_count = (
+                    participants
+                )
+
+                measurement_record.review = (
+                    _append_uploaded_review(
+                        old_review=(
+                            measurement_record.review
+                        ),
+                        new_review=review,
+                    )
+                )
+
+                session.flush()
+
+                updated_records += 1
+
+            for (
+                indicator_code,
+                current_value,
+            ) in indicator_values.items():
+
+                if current_value is None:
+                    continue
+
+                indicator = indicator_rows.get(
+                    indicator_code
+                )
+
+                if indicator is None:
+                    raise ValueError(
+                        "المؤشر غير موجود في "
+                        f"قاعدة البيانات: "
+                        f"{indicator_code}"
+                    )
+
+                target_value = targets.get(
+                    indicator_code
+                )
+
+                if target_value is None:
+                    raise ValueError(
+                        "لا توجد قيمة مستهدفة "
+                        f"للمؤشر {indicator_code}."
+                    )
+
+                current_decimal = Decimal(
+                    str(current_value)
+                )
+
+                target_decimal = Decimal(
+                    str(target_value)
+                )
+
+                if (
+                    current_decimal
+                    < indicator.min_value
+                    or current_decimal
+                    > indicator.max_value
+                ):
+                    raise ValueError(
+                        f"قيمة {indicator_code} "
+                        f"خارج النطاق المسموح: "
+                        f"{current_decimal}"
+                    )
+
+                previous_value = (
+                    previous_values.get(
+                        indicator_code
+                    )
+                )
+
+                indicator_result = (
+                    session.query(
+                        IndicatorResult
+                    )
+                    .filter(
+                        IndicatorResult.record_id
+                        == measurement_record.record_id,
+                        IndicatorResult.indicator_id
+                        == indicator.indicator_id,
+                    )
+                    .first()
+                )
+
+                if indicator_result is None:
+                    indicator_result = (
+                        IndicatorResult(
+                            record_id=(
+                                measurement_record
+                                .record_id
+                            ),
+                            indicator_id=(
+                                indicator.indicator_id
+                            ),
+                            prev_value=(
+                                None
+                                if previous_value
+                                is None
+                                else Decimal(
+                                    str(
+                                        previous_value
+                                    )
+                                )
+                            ),
+                            current_value=(
+                                current_decimal
+                            ),
+                            target_value=(
+                                target_decimal
+                            ),
+                        )
+                    )
+
+                    session.add(
+                        indicator_result
+                    )
+
+                else:
+                    indicator_result.prev_value = (
+                        None
+                        if previous_value is None
+                        else Decimal(
+                            str(previous_value)
+                        )
+                    )
+
+                    indicator_result.current_value = (
+                        current_decimal
+                    )
+
+                    indicator_result.target_value = (
+                        target_decimal
+                    )
+
+                saved_indicators += 1
+
+        session.commit()
+
+        return {
+            "ok": True,
+            "errors": [],
+            "inserted_records": (
+                inserted_records
+            ),
+            "updated_records": (
+                updated_records
+            ),
+            "saved_indicators": (
+                saved_indicators
+            ),
+        }
+
+    except Exception as error:
+        session.rollback()
+
+        return {
+            "ok": False,
+            "errors": [
+                f"خطأ في حفظ ملف Excel: {error}"
+            ],
+            "inserted_records": 0,
+            "updated_records": 0,
+            "saved_indicators": 0,
+        }
+
+    finally:
+        session.close()
