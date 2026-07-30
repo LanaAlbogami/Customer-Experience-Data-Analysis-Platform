@@ -84,3 +84,159 @@ def apply_theme():
         """,
         unsafe_allow_html=True,
     )
+
+
+
+def fix_sidebar_style():
+    st.markdown(
+        """
+        <style>
+        @import url(
+            'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap'
+        );
+
+        /* خلفية السايدبار */
+        section[data-testid="stSidebar"] {
+            background-color: #16213E !important;
+            border: none !important;
+        }
+
+        section[data-testid="stSidebar"] > div {
+            background-color: #16213E !important;
+            direction: rtl !important;
+        }
+
+        /* مساحة محتوى السايدبار */
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarContent"] {
+            padding: 20px 18px !important;
+            direction: rtl !important;
+        }
+
+        /* قائمة الصفحات */
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"] {
+            direction: rtl !important;
+        }
+
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"] ul {
+            gap: 8px !important;
+        }
+
+        /* رابط الصفحة */
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"] a {
+            min-height: 64px !important;
+            width: 100% !important;
+
+            padding: 14px 18px !important;
+            margin: 0 0 7px 0 !important;
+
+            border-radius: 13px !important;
+            background-color: transparent !important;
+
+            direction: rtl !important;
+            text-align: right !important;
+
+            color: #FFFFFF !important;
+            text-decoration: none !important;
+        }
+
+        /* ترتيب الأيقونة والنص */
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"] a > div {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+
+            width: 100% !important;
+            gap: 12px !important;
+
+            direction: rtl !important;
+        }
+
+        /* نصوص القائمة */
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"] a p {
+            margin: 0 !important;
+
+            color: #FFFFFF !important;
+            font-family: "Tajawal", sans-serif !important;
+            font-size: 16px !important;
+            font-weight: 700 !important;
+
+            line-height: 1.5 !important;
+            text-align: right !important;
+        }
+
+        /* أيقونات Streamlit */
+        section[data-testid="stSidebar"]
+        span[data-testid="stIconMaterial"] {
+            font-family: "Material Symbols Rounded" !important;
+            font-size: 22px !important;
+            font-weight: normal !important;
+            font-style: normal !important;
+
+            color: #FFFFFF !important;
+            direction: ltr !important;
+            text-align: center !important;
+
+            flex-shrink: 0 !important;
+        }
+
+        /* الصفحة المختارة */
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"]
+        a[aria-current="page"] {
+            background-color: #6C4AB6 !important;
+            color: #FFFFFF !important;
+        }
+
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"]
+        a[aria-current="page"] p,
+
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"]
+        a[aria-current="page"] span {
+            color: #FFFFFF !important;
+        }
+
+        /* المرور بالماوس */
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarNav"] a:hover {
+            background-color: #22335C !important;
+            color: #FFFFFF !important;
+        }
+
+        /* الشعار */
+        section[data-testid="stSidebar"]
+        [data-testid="stLogo"] {
+            margin-top: 10px !important;
+            margin-bottom: 28px !important;
+        }
+
+        section[data-testid="stSidebar"]
+        [data-testid="stLogo"] img {
+            max-width: 185px !important;
+            height: auto !important;
+            object-fit: contain !important;
+        }
+
+        /* زر تصغير السايدبار */
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarCollapseButton"] button {
+            color: #FFFFFF !important;
+        }
+
+        section[data-testid="stSidebar"]
+        [data-testid="stSidebarCollapseButton"] svg {
+            color: #FFFFFF !important;
+            fill: #FFFFFF !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
