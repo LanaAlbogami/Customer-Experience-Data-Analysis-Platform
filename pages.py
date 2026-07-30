@@ -1,12 +1,54 @@
+from pathlib import Path
 import streamlit as st
-from style import fix_sidebar_style
+from PIL import Image
+
+
+# ==================================================
+# تجهيز الشعار وقص الفراغ الشفاف
+# ==================================================
+
+def prepare_logo():
+    original_logo = Path("LogoWhite.png")
+    cropped_logo = Path("LogoWhite_cropped.png")
+
+    if not original_logo.exists():
+        return original_logo
+
+    try:
+        # إعادة القص فقط إذا تغيرت الصورة الأصلية
+        should_crop = (
+            not cropped_logo.exists()
+            or original_logo.stat().st_mtime
+            > cropped_logo.stat().st_mtime
+        )
+
+        if should_crop:
+            with Image.open(original_logo).convert("RGBA") as image:
+                alpha = image.getchannel("A")
+                bounding_box = alpha.getbbox()
+
+                if bounding_box:
+                    cropped_image = image.crop(bounding_box)
+                    cropped_image.save(cropped_logo)
+                else:
+                    image.save(cropped_logo)
+
+        return cropped_logo
+
+    except Exception:
+        return original_logo
+
+
+LOGO_PATH = prepare_logo()
+
 
 # ==================================================
 # إعدادات التطبيق
 # ==================================================
+
 st.set_page_config(
     page_title="منصة تجربة العميل",
-    page_icon="logo.png",
+    page_icon=str(LOGO_PATH),
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -15,40 +57,39 @@ st.set_page_config(
 # ==================================================
 # الشعار أعلى السايدبار
 # ==================================================
+
 st.logo(
-    "logo.png",
+    str(LOGO_PATH),
     size="large",
 )
 
 
 # ==================================================
-# تنسيق التطبيق
+# تصميم التطبيق والسايدبار
 # ==================================================
+
 st.markdown(
     """
     <style>
+    @import url(
+        'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap'
+    );
 
-    /* اتجاه الصفحة */
     html,
     body {
         direction: rtl;
     }
 
-    /* خلفية التطبيق */
     [data-testid="stAppViewContainer"] {
         background-color: #F5F6FA;
         direction: rtl;
-
-        /*
-        مهم:
-        لا تستخدمي row-reverse لأن اتجاه الصفحة RTL أصلًا
-        */
         flex-direction: row !important;
     }
 
-    /* اتجاه محتوى الصفحة */
+    /* محتوى الصفحات */
     [data-testid="stMain"] {
         direction: rtl;
+        text-align: right;
     }
 
     [data-testid="stMainBlockContainer"] {
@@ -59,61 +100,132 @@ st.markdown(
         padding-left: 3rem;
     }
 
-    /* ==================================================
+    [data-testid="stMain"] p,
+    [data-testid="stMain"] h1,
+    [data-testid="stMain"] h2,
+    [data-testid="stMain"] h3,
+    [data-testid="stMain"] label,
+    [data-testid="stMain"] button,
+    [data-testid="stMain"] input,
+    [data-testid="stMain"] textarea {
+        font-family: "Tajawal", sans-serif !important;
+    }
+
+    /* =========================
        السايدبار
-    ================================================== */
+    ========================= */
+
     section[data-testid="stSidebar"] {
         background-color: #16213E !important;
-        width: 315px !important;
-        min-width: 315px !important;
-
+        width: 320px !important;
+        min-width: 320px !important;
+        border-left: 1px solid rgba(255, 255, 255, 0.08);
         border-right: none !important;
-        border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
 
     section[data-testid="stSidebar"] > div {
-        direction: rtl;
-        text-align: right;
+        background-color: #16213E !important;
+        direction: rtl !important;
+        text-align: right !important;
     }
 
     [data-testid="stSidebarContent"] {
-        direction: rtl;
-        padding: 22px 16px;
+        direction: rtl !important;
+        padding: 18px 18px !important;
     }
 
-    /* ==================================================
-       قائمة التنقل
-    ================================================== */
+    /* =========================
+       الشعار (تم التعديل هنا)
+    ========================= */
+
+    section[data-testid="stSidebar"] [data-testid="stLogo"] {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        width: 100% !important;
+        margin: 10px auto 20px auto !important;
+        padding: 0 !important;
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stLogo"] img {
+        width: 80% !important;
+        max-width: 240px !important;
+        height: auto !important;
+        max-height: 100px !important;
+        object-fit: contain !important;
+    }
+
+    /* =========================
+       قائمة الصفحات
+    ========================= */
+
     [data-testid="stSidebarNav"] {
-        direction: rtl;
-        padding-top: 20px;
+        direction: rtl !important;
+        padding-top: 5px !important;
     }
 
     [data-testid="stSidebarNav"] ul {
-        gap: 9px;
+        gap: 8px !important;
     }
 
     [data-testid="stSidebarNav"] li {
-        direction: rtl;
+        direction: rtl !important;
     }
 
     [data-testid="stSidebarNav"] a {
-        direction: rtl;
-        text-align: right;
+        min-height: 62px !important;
+        padding: 14px 18px !important;
+        margin-bottom: 6px !important;
 
-        border-radius: 13px;
-        padding: 15px 17px;
+        border-radius: 13px !important;
+        background-color: transparent !important;
 
-        color: #DCE3F5 !important;
-        font-size: 16px;
-        font-weight: 600;
+        direction: rtl !important;
+        text-align: right !important;
 
-        transition: all 0.2s ease;
+        color: #FFFFFF !important;
+        text-decoration: none !important;
+
+        transition: background-color 0.2s ease !important;
     }
 
-    [data-testid="stSidebarNav"] a:hover {
-        background-color: #22335C !important;
+    /* ترتيب الأيقونة والنص */
+    [data-testid="stSidebarNav"] a > div {
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+
+        width: 100% !important;
+        gap: 12px !important;
+        direction: rtl !important;
+    }
+
+    /* نصوص القائمة */
+    [data-testid="stSidebarNav"] a p {
+        margin: 0 !important;
+
         color: #FFFFFF !important;
+        font-family: "Tajawal", sans-serif !important;
+        font-size: 16px !important;
+        font-weight: 700 !important;
+
+        line-height: 1.5 !important;
+        text-align: right !important;
+    }
+
+    /* أيقونات القائمة */
+    [data-testid="stSidebarNav"] span[data-testid="stIconMaterial"] {
+        font-family: "Material Symbols Rounded" !important;
+        font-size: 22px !important;
+        font-weight: normal !important;
+        font-style: normal !important;
+
+        color: #FFFFFF !important;
+        direction: ltr !important;
+        text-align: center !important;
+
+        flex-shrink: 0 !important;
     }
 
     /* الصفحة المحددة */
@@ -122,101 +234,90 @@ st.markdown(
         color: #FFFFFF !important;
     }
 
-    /* ترتيب الأيقونة والنص */
-    [data-testid="stSidebarNav"] a > div {
-        flex-direction: row-reverse;
-        justify-content: flex-start;
-        gap: 12px;
+    [data-testid="stSidebarNav"] a[aria-current="page"] p,
+    [data-testid="stSidebarNav"] a[aria-current="page"] span {
+        color: #FFFFFF !important;
     }
 
-    [data-testid="stSidebarNav"] svg {
-        color: inherit !important;
+    /* عند تمرير الماوس */
+    [data-testid="stSidebarNav"] a:hover {
+        background-color: #22335C !important;
+        color: #FFFFFF !important;
     }
 
     [data-testid="stSidebarNavSeparator"] {
-        display: none;
+        display: none !important;
     }
 
-    /* ==================================================
-       الشعار
-    ================================================== */
-    [data-testid="stLogo"] {
-        margin: 12px auto 18px auto;
-    }
-
-    [data-testid="stLogo"] img {
-        max-width: 210px;
-        height: auto;
-        object-fit: contain;
-    }
-
-    /* زر فتح وإغلاق السايدبار */
+    /* زر تصغير السايدبار */
     [data-testid="stSidebarCollapseButton"] button {
         color: #FFFFFF !important;
     }
 
-    /* إخفاء ترويسة Streamlit العلوية الزائدة */
+    [data-testid="stSidebarCollapseButton"] svg {
+        color: #FFFFFF !important;
+        fill: #FFFFFF !important;
+    }
+
+    /* المحافظة على خط الأيقونات */
+    span[data-testid="stIconMaterial"],
+    .material-symbols-rounded {
+        font-family: "Material Symbols Rounded" !important;
+    }
+
     header[data-testid="stHeader"] {
         background-color: transparent;
     }
 
-    /* إخفاء الفوتر */
     footer {
         visibility: hidden;
     }
-
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-fix_sidebar_style()
+
 # ==================================================
 # تعريف الصفحات
 # ==================================================
-dashboard_page = st.Page(
-    "Dashboard.py",
-    title="لوحة المعلومات",
-    icon=":material/dashboard:",
-    default=True,
-)
 
-data_entry_page = st.Page(
-    "data_entry.py",
-    title="إدخال بيانات المؤشرات",
-    icon=":material/add:",
-)
-
-upload_page = st.Page(
-    "data_upload.py",
-    title="رفع ملف Excel",
-    icon=":material/upload_file:",
-)
-
-comments_page = st.Page(
-    "comments_page.py",
-    title="تحليل تعليقات العملاء",
-    icon=":material/chat_bubble_outline:",
-)
-
-reports_page = st.Page(
-    "reports_page.py",
-    title="التقارير",
-    icon=":material/description:",
-)
+pages = [
+    st.Page(
+        "Dashboard.py",
+        title="لوحة المعلومات",
+        icon=":material/dashboard:",
+        default=True,
+    ),
+    st.Page(
+        "data_entry.py",
+        title="إدخال بيانات المؤشرات",
+        icon=":material/add:",
+    ),
+    st.Page(
+        "data_upload.py",
+        title="رفع ملف Excel",
+        icon=":material/upload_file:",
+    ),
+    st.Page(
+        "comments_page.py",
+        title="تحليل تعليقات العملاء",
+        icon=":material/chat_bubble_outline:",
+    ),
+    st.Page(
+        "reports_page.py",
+        title="التقارير",
+        icon=":material/description:",
+    ),
+]
 
 
 # ==================================================
-# التنقل بين الصفحات
+# تشغيل التنقل
 # ==================================================
+
 page = st.navigation(
-    [
-        dashboard_page,
-        data_entry_page,
-        upload_page,
-        comments_page,
-        reports_page,
-    ],
+    pages,
     position="sidebar",
     expanded=True,
 )
