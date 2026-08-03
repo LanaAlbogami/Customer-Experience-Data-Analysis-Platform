@@ -24,13 +24,16 @@ def prepare_logo():
 
         if should_crop:
             with Image.open(original_logo).convert("RGBA") as image:
-                alpha = image.getchannel("A")
-                bounding_box = alpha.getbbox()
+              alpha = image.getchannel("A")
 
-                if bounding_box:
+            threshold = 20
+            mask = alpha.point(lambda a: 255 if a > threshold else 0)
+            bounding_box = mask.getbbox()
+
+            if bounding_box:
                     cropped_image = image.crop(bounding_box)
                     cropped_image.save(cropped_logo)
-                else:
+            else:
                     image.save(cropped_logo)
 
         return cropped_logo
@@ -148,10 +151,10 @@ st.markdown(
     }
 
     section[data-testid="stSidebar"] [data-testid="stLogo"] img {
-        width: 80% !important;
-        max-width: 240px !important;
+        width: 100% !important;
+        max-width: 280px !important;
         height: auto !important;
-        max-height: 100px !important;
+        max-height: 200px !important;
         object-fit: contain !important;
     }
 
