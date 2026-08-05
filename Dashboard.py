@@ -1,9 +1,19 @@
+import math
+import textwrap
+
 import streamlit as st
 import plotly.graph_objects as go
 from style import apply_theme, COLORS
 
 st.set_page_config(page_title="لوحة المعلومات", layout="wide")
 apply_theme()
+
+# ---- ألوان الأدوار: تُستخدم بثبات لكل مؤشر (CSAT/CES/NPS) وبار تشارت العوامل ----
+ROLE_COLORS = {
+    "current": "#2FA88E",   # الحالي: أخضر
+    "target": "#F4B740",    # المستهدف: أصفر
+    "previous": "#1F3A5F",  # السابق: كحلي
+}
 
 # ---- Force RTL + hide the auto header-link icon ----
 st.markdown("""
@@ -75,7 +85,7 @@ if not mock_records:
     st.warning("لا توجد بيانات بعد بقاعدة البيانات")
     st.stop()
 
-# ---- Filters: السنة، الفترة، الإدارة، الخدمة ----
+# ---- Filters: السنة، الفترة، القطاع، الخدمة ----
 st.subheader("عرض حسب")
 f1, f2, f3, f4 = st.columns(4)
 
@@ -84,27 +94,98 @@ with f1:
 with f2:
     period = st.selectbox("الفترة", sorted({r["period"] for r in mock_records}))
 with f3:
-    dept = st.selectbox("الإدارة", ["كل الإدارات"] + list({r["department"] for r in mock_records}))
+    dept = st.selectbox("القطاع", ["كل القطاعات"] + list({r["department"] for r in mock_records}))
 with f4:
-    if dept == "كل الإدارات":
+    if dept == "كل القطاعات":
         services = {r["service"] for r in mock_records}
     else:
         services = {r["service"] for r in mock_records if r["department"] == dept}
     service = st.selectbox("الخدمة", ["كل الخدمات"] + list(services))
 
+
+def _average_ignoring_none(values):
+    """متوسط القيم المتوفرة فقط، أو None لو كلها فاضية."""
+    numeric_values = [v for v in values if v is not None]
+    if not numeric_values:
+        return None
+    return round(sum(numeric_values) / len(numeric_values), 2)
+
+
+def _build_general_record(records, year, period, dept):
+    """
+    يبني سجل "عام" بمتوسط كل السجلات المطابقة لسنة/فترة/قطاع،
+    يُستخدم لما ما فيه سجل يطابق الفلاتر بالضبط (مثلاً خدمة معينة
+    ما عندها بيانات لهذي الفترة).
+    """
+    matching = [
+        r for r in records
+        if r["year"] == year
+        and r["period"] == period
+        and (dept == "كل القطاعات" or r["department"] == dept)
+    ]
+
+    if not matching:
+        return None
+
+    general = {
+        "section": dept if dept != "كل القطاعات" else "عام",
+        "department": dept if dept != "كل القطاعات" else "عام",
+        "service": "عام (متوسط كل الخدمات المتاحة)",
+        "year": year,
+        "period": period,
+        "factors": {},
+    }
+
+    for code in ("csat", "ces", "nps"):
+        for suffix in ("prev", "current", "target"):
+            key = f"{code}_{suffix}"
+            general[key] = _average_ignoring_none(
+                r.get(key) for r in matching
+            )
+
+    all_factor_names = {
+        name
+        for r in matching
+        for name in r.get("factors", {})
+    }
+    for factor_name in all_factor_names:
+        values = [
+            r["factors"][factor_name]["current_value"]
+            for r in matching
+            if factor_name in r.get("factors", {})
+        ]
+        general["factors"][factor_name] = {
+            "current_value": _average_ignoring_none(values),
+        }
+
+    return general
+
+
 # ---- Pick the record matching ALL filters ----
 rec = next(
     (r for r in mock_records
-     if (dept == "كل الإدارات" or r["department"] == dept)
+     if (dept == "كل القطاعات" or r["department"] == dept)
      and r["year"] == year
      and r["period"] == period
      and (service == "كل الخدمات" or r["service"] == service)),
     None
 )
 
+is_general_view = False
+
 if rec is None:
-    st.warning("لا توجد بيانات مطابقة لهذا الاختيار")
+    rec = _build_general_record(mock_records, year, period, dept)
+    is_general_view = True
+
+if rec is None:
+    st.warning("لا توجد أي بيانات لهذه السنة والفترة على الإطلاق")
     st.stop()
+
+if is_general_view:
+    st.info(
+        "لا توجد بيانات مطابقة تمامًا لهذا الاختيار، "
+        "المعروض الآن متوسط عام لكل الخدمات المتاحة بنفس السنة والفترة."
+    )
 
 # ---- KPI cards: دائرة نسبة + (مستهدف يمين صغير - حالي بالنص كبير - سابق يسار صغير) ----
 LRM = "\u200e"
@@ -112,9 +193,6 @@ st.subheader("المؤشرات الرئيسية")
 
 # ترتيب من اليمين لليسار: CSAT ثم CES ثم NPS
 col_csat, col_ces, col_nps = st.columns(3)
-
-
-import math
 
 
 def donut_svg(fill_percent, display_text, color, size=140, stroke=14, font_size=20, track_color="#DDE1EA"):
@@ -191,7 +269,7 @@ def _display_table_value(value, kind=None):
     return f"{number:g}"
 
 
-def kpi_block(col, label, current, prev, target, color, kind):
+def kpi_block(col, label, current, prev, target, kind):
     with col:
         with st.container(border=True):
             st.markdown(f'<div class="card-title">{label}</div>', unsafe_allow_html=True)
@@ -205,21 +283,21 @@ def kpi_block(col, label, current, prev, target, color, kind):
 
             with c_target:
                 st.markdown(
-                    donut_svg(target_pct, _display_value(target, kind), color, size=115, stroke=13, font_size=18),
+                    donut_svg(target_pct, _display_value(target, kind), ROLE_COLORS["target"], size=115, stroke=13, font_size=18),
                     unsafe_allow_html=True,
                 )
                 st.markdown('<div style="text-align:center; font-size:12px; color:#8A94B5;">المستهدف</div>', unsafe_allow_html=True)
 
             with c_current:
                 st.markdown(
-                    donut_svg(current_pct, _display_value(current, kind), color, size=170, stroke=17, font_size=30),
+                    donut_svg(current_pct, _display_value(current, kind), ROLE_COLORS["current"], size=170, stroke=17, font_size=30),
                     unsafe_allow_html=True,
                 )
                 st.markdown('<div style="text-align:center; font-size:13px; font-weight:700; color:#16213E;">الحالي</div>', unsafe_allow_html=True)
 
             with c_prev:
                 st.markdown(
-                    donut_svg(prev_pct, _display_value(prev, kind), color, size=115, stroke=13, font_size=18),
+                    donut_svg(prev_pct, _display_value(prev, kind), ROLE_COLORS["previous"], size=115, stroke=13, font_size=18),
                     unsafe_allow_html=True,
                 )
                 st.markdown('<div style="text-align:center; font-size:12px; color:#8A94B5;">السابق</div>', unsafe_allow_html=True)
@@ -231,7 +309,6 @@ kpi_block(
     rec.get("csat_current"),
     rec.get("csat_prev"),
     rec.get("csat_target"),
-    color="#6C4AB6",
     kind="percent",
 )
 
@@ -241,7 +318,6 @@ kpi_block(
     rec.get("ces_current"),
     rec.get("ces_prev"),
     rec.get("ces_target"),
-    color="#2FA88E",
     kind="range",
 )
 
@@ -251,7 +327,6 @@ kpi_block(
     rec.get("nps_current"),
     rec.get("nps_prev"),
     rec.get("nps_target"),
-    color="#3B82C4",
     kind="range",
 )
 
@@ -263,7 +338,7 @@ with col_top5:
         scope_records = [
             r for r in mock_records
             if r["year"] == year and r["period"] == period
-            and (dept == "كل الإدارات" or r["department"] == dept)
+            and (dept == "كل القطاعات" or r["department"] == dept)
         ]
 
         top_services = sorted(
@@ -323,9 +398,9 @@ with col_chart:
         ]
 
         fig = go.Figure()
-        fig.add_bar(name="السابق", x=indicators, y=prev, marker_color=COLORS["muted"], marker_cornerradius=8)
-        fig.add_bar(name="الحالي", x=indicators, y=curr, marker_color=COLORS["purple"], marker_cornerradius=8)
-        fig.add_bar(name="المستهدف", x=indicators, y=targ, marker_color=COLORS["green"], marker_cornerradius=8)
+        fig.add_bar(name="السابق", x=indicators, y=prev, marker_color=ROLE_COLORS["previous"], marker_cornerradius=8)
+        fig.add_bar(name="الحالي", x=indicators, y=curr, marker_color=ROLE_COLORS["current"], marker_cornerradius=8)
+        fig.add_bar(name="المستهدف", x=indicators, y=targ, marker_color=ROLE_COLORS["target"], marker_cornerradius=8)
         fig.update_layout(
             barmode="group",
             bargap=0.35,
@@ -341,7 +416,82 @@ with col_chart:
         fig.update_xaxes(showgrid=False, showline=False, zeroline=False)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-# ---- Recent records table ----
+# ---- توزيع CSAT حسب العوامل (Factors) للخدمة أو العرض العام المختار ----
+with st.container(border=True):
+    st.markdown(
+        '<div class="card-title">CSAT حسب العوامل</div>',
+        unsafe_allow_html=True,
+    )
+
+    factors_dict = rec.get("factors") or {}
+
+    if not factors_dict:
+        st.info("لا توجد بيانات عوامل مسجلة لهذا الاختيار")
+    else:
+        factor_names = list(factors_dict.keys())
+        factor_values = [
+            _number_or_none(factors_dict[name].get("current_value"))
+            for name in factor_names
+        ]
+
+        display_names_raw = factor_names[::-1]
+        display_values = factor_values[::-1]
+
+        # نلف الأسماء الطويلة على سطرين بدل ما تتقطع أو تتراكب
+        display_names = [
+            "<br>".join(textwrap.wrap(name, width=28)) or name
+            for name in display_names_raw
+        ]
+
+        bar_colors = [
+            ROLE_COLORS["current"] if v is not None else COLORS["muted"]
+            for v in display_values
+        ]
+
+        text_labels = [
+            f"{v:g}%" if v is not None else "—"
+            for v in display_values
+        ]
+
+        factor_fig = go.Figure()
+        factor_fig.add_bar(
+            x=[v if v is not None else 0 for v in display_values],
+            y=display_names,
+            orientation="h",
+            marker_color=bar_colors,
+            marker_cornerradius=8,
+            text=text_labels,
+            textposition="outside",
+            textfont=dict(color="#16213E", size=13),
+        )
+        factor_fig.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            height=max(340, 80 * len(display_names)),
+            margin=dict(l=10, r=200, t=10, b=10),
+            font=dict(color="#16213E", size=13),
+            xaxis=dict(
+                range=[100, 0],           # معكوس: يبدأ من اليمين
+                showgrid=True,
+                gridcolor="#F1F2F7",
+                zeroline=False,
+            ),
+            yaxis=dict(
+                side="right",              # أسماء العوامل يمين الرسم
+                showgrid=False,
+                zeroline=False,
+                automargin=True,
+                tickfont=dict(size=13),
+            ),
+            showlegend=False,
+        )
+        st.plotly_chart(
+            factor_fig,
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
+
+# ---- Recent records table (آخر 5 إدخالات فقط) ----
 st.subheader("أحدث الإدخالات")
 
 st.markdown("""
@@ -404,14 +554,15 @@ def make_row(r):
     )
 
 
-rows_html = "".join(make_row(r) for r in mock_records)
+# آخر 5 سجلات فقط (mock_records مرتبة من الأحدث للأقدم من data_service.py)
+rows_html = "".join(make_row(r) for r in mock_records[:5])
 
 table_html = (
     f'<div dir="rtl" style="text-align:right; background:{COLORS["card"]}; border-radius:16px; '
     f'border:1px solid {COLORS["border"]}; overflow:hidden; box-shadow: 0 5px 18px rgba(22, 33, 62, 0.05);">'
     f'<table class="modern-table">'
     f'<thead><tr>'
-    f'<th>الإدارة</th>'
+    f'<th>القطاع</th>'
     f'<th>الخدمة</th>'
     f'<th>الفترة</th>'
     f'<th>CSAT</th>'

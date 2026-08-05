@@ -35,6 +35,9 @@ def fetch_records_from_db():
     """
     يرجع سجلات القياس مع نتائج المؤشرات والعوامل.
 
+    السجلات مرتبة من الأحدث للأقدم (حسب RecordID)، عشان
+    الداشبورد يقدر ياخذ "آخر N سجل" مباشرة من أول القائمة.
+
     تم إبقاء department مؤقتًا للتوافق مع الصفحات القديمة،
     لكنه يحمل نفس قيمة section.
     """
@@ -56,12 +59,14 @@ def fetch_records_from_db():
                 Service.section_id
                 == Section.section_id,
             )
+            .order_by(MeasurementRecord.record_id.desc())
         ).all()
 
         output = []
 
         for record, service, section in rows:
             row = {
+                "record_id": record.record_id,
                 "section": section.section_name,
                 "department": section.section_name,
                 "service": service.service_name,
