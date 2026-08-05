@@ -1,21 +1,26 @@
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     ForeignKey,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 from database.connection import Base
 
 
-# ==================================================
 # الأقسام
-# ==================================================
+
 class Section(Base):
     __tablename__ = "Section"
 
@@ -34,13 +39,13 @@ class Section(Base):
     )
 
     services: Mapped[list["Service"]] = relationship(
-        back_populates="section"
+        back_populates="section",
     )
 
 
-# ==================================================
 # الخدمات
-# ==================================================
+# كل خدمة تتبع قسمًا واحدًا
+
 class Service(Base):
     __tablename__ = "Service"
 
@@ -73,18 +78,19 @@ class Service(Base):
     )
 
     section: Mapped["Section"] = relationship(
-        back_populates="services"
+        back_populates="services",
     )
 
-    measurement_records: Mapped[list["MeasurementRecord"]] = relationship(
-        back_populates="service"
+    measurement_records: Mapped[
+        list["MeasurementRecord"]
+    ] = relationship(
+        back_populates="service",
     )
 
 
-# ==================================================
 # سجلات القياس
 # كل سجل يمثل خدمة في سنة وفترة محددة
-# ==================================================
+
 class MeasurementRecord(Base):
     __tablename__ = "MeasurementRecords"
 
@@ -123,10 +129,12 @@ class MeasurementRecord(Base):
         nullable=False,
     )
 
-    participants_count: Mapped[int | None] = mapped_column(
+    participants_count: Mapped[int] = mapped_column(
         "ParticipantsCount",
         Integer,
-        nullable=True,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
     )
 
     review: Mapped[str | None] = mapped_column(
@@ -136,22 +144,37 @@ class MeasurementRecord(Base):
     )
 
     service: Mapped["Service"] = relationship(
-        back_populates="measurement_records"
+        back_populates="measurement_records",
     )
 
-    indicator_results: Mapped[list["IndicatorResult"]] = relationship(
-        back_populates="record"
+    indicator_results: Mapped[
+        list["IndicatorResult"]
+    ] = relationship(
+        back_populates="record",
+        cascade="all, delete-orphan",
     )
 
-    factor_results: Mapped[list["FactorResult"]] = relationship(
-        back_populates="record"
+    factor_results: Mapped[
+        list["FactorResult"]
+    ] = relationship(
+        back_populates="record",
+        cascade="all, delete-orphan",
     )
 
 
-# ==================================================
-# المؤشرات الأخرى
-# مثل CES و NPS و BPS
-# ==================================================
+# المؤشرات
+
+# يشمل:
+# CSAT, CES, NPS, BPS وغيرها
+
+# IsFactorBased = True
+# القيمة الحالية تُحسب من نتائج العوامل
+# مثل CSAT
+
+# IsFactorBased = False
+# القيمة تُحسب أو تُرفع بشكل مستقل
+# مثل CES وNPS وBPS
+
 class Indicator(Base):
     __tablename__ = "Indicators"
 
@@ -187,14 +210,25 @@ class Indicator(Base):
         nullable=False,
     )
 
-    results: Mapped[list["IndicatorResult"]] = relationship(
-        back_populates="indicator"
+    is_factor_based: Mapped[bool] = mapped_column(
+        "IsFactorBased",
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("0"),
+    )
+
+    results: Mapped[
+        list["IndicatorResult"]
+    ] = relationship(
+        back_populates="indicator",
     )
 
 
-# ==================================================
-# نتائج المؤشرات الأخرى
-# ==================================================
+# نتائج المؤشرات
+# يحفظ القيمة السابقة والحالية والمستهدفة
+# لكل مؤشر ولكل سجل قياس
+
 class IndicatorResult(Base):
     __tablename__ = "IndicatorResults"
 
@@ -246,17 +280,17 @@ class IndicatorResult(Base):
     )
 
     record: Mapped["MeasurementRecord"] = relationship(
-        back_populates="indicator_results"
+        back_populates="indicator_results",
     )
 
     indicator: Mapped["Indicator"] = relationship(
-        back_populates="results"
+        back_populates="results",
     )
 
 
-# ==================================================
-# عوامل CSAT الثمانية الثابتة
-# ==================================================
+# عوامل CSAT السبعة الثابتة
+# أسماء العوامل نفسها ستُضاف من seed_data.py
+
 class Factor(Base):
     __tablename__ = "Factors"
 
@@ -281,14 +315,16 @@ class Factor(Base):
         unique=True,
     )
 
-    results: Mapped[list["FactorResult"]] = relationship(
-        back_populates="factor"
+    results: Mapped[
+        list["FactorResult"]
+    ] = relationship(
+        back_populates="factor",
     )
 
 
-# ==================================================
 # نتائج عوامل CSAT
-# ==================================================
+# يحفظ نتيجة كل عامل داخل كل سجل قياس
+
 class FactorResult(Base):
     __tablename__ = "FactorResults"
 
@@ -321,6 +357,14 @@ class FactorResult(Base):
         nullable=False,
     )
 
+    # عدد الإجابات الصحيحة المستخدمة
+    # في حساب نتيجة هذا العامل
+    participants_count: Mapped[int | None] = mapped_column(
+        "ParticipantsCount",
+        Integer,
+        nullable=True,
+    )
+
     prev_value: Mapped[Decimal | None] = mapped_column(
         "PrevValue",
         Numeric(10, 2),
@@ -340,9 +384,9 @@ class FactorResult(Base):
     )
 
     record: Mapped["MeasurementRecord"] = relationship(
-        back_populates="factor_results"
+        back_populates="factor_results",
     )
 
     factor: Mapped["Factor"] = relationship(
-        back_populates="results"
+        back_populates="results",
     )

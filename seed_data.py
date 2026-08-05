@@ -12,75 +12,228 @@ Run it ONCE after the tables are created:
 This uses the team's own models, so it stays consistent with their schema.
 """
 
+from decimal import Decimal
+
 from database.connection import SessionLocal
-from database.models import Department, Service, Indicator
+from database.models import (
+    Section,
+    Service,
+    Indicator,
+    Factor,
+)
 
 
-# The same department -> services structure the page uses.
-DEPARTMENTS = {
-    "إدارة تجربة العميل": ["خدمة المستفيدين", "مركز الاتصال", "المحادثة المباشرة"],
-    "الخدمات الرقمية": ["تطبيق الجوال", "البوابة الإلكترونية", "النماذج الإلكترونية"],
-    "الموارد البشرية": ["تعيين الموظفين الجدد", "دعم الرواتب"],
-    "العمليات": ["الزيارات الميدانية", "طلبات الصيانة"],
-}
+# الأقسام والخدمات
 
-# The three indicators, with the min/max range the schema requires.
+SECTIONS = {}
+
+
+
+# المؤشرات
+
+# CSAT يعتمد على متوسط نتائج العوامل السبعة.
+# أما CES وNPS وBPS فتُحسب أو تُرفع بشكل مستقل.
+
+
 INDICATORS = [
-    {"name": "CSAT", "unit": "%", "min_value": 0, "max_value": 100},
-    {"name": "CES", "unit": "score", "min_value": -100, "max_value": 100},
-    {"name": "NPS", "unit": "score", "min_value": -100, "max_value": 100},
+    {
+        "name": "CSAT",
+        "unit": "%",
+        "min_value": Decimal("0"),
+        "max_value": Decimal("100"),
+        "is_factor_based": True,
+    },
+    {
+        "name": "CES",
+        "unit": "score",
+        "min_value": Decimal("-100"),
+        "max_value": Decimal("100"),
+        "is_factor_based": False,
+    },
+    {
+        "name": "NPS",
+        "unit": "score",
+        "min_value": Decimal("-100"),
+        "max_value": Decimal("100"),
+        "is_factor_based": False,
+    },
+    {
+        "name": "BPS",
+        "unit": "%",
+        "min_value": Decimal("0"),
+        "max_value": Decimal("100"),
+        "is_factor_based": False,
+    },
 ]
 
 
+
+# عوامل CSAT السبعة الثابتة
+
+
+FACTORS = [
+    "سهولة الحصول على معلومات ",
+    "إمكانيات وخصائص الخدمة",
+    "استقرار وثبات الخدمة",
+    "الإبلاغ بالتحديثات على الخدمة",
+    "الرضا بشكل عام عن دعم العملاء ",
+    "الرضا بشكل عام عن مدير الحساب",
+    "الرضا بشكل عام عن الدعم الفني الميداني",
+]
+
+
+# تعبئة الأقسام والخدمات
+
+def seed_sections_and_services(session):
+    for section_name, service_names in SECTIONS.items():
+
+        section = (
+            session.query(Section)
+            .filter_by(section_name=section_name)
+            .first()
+        )
+
+        if section is None:
+            section = Section(
+                section_name=section_name
+            )
+
+            session.add(section)
+            session.flush()
+
+            print(f"+ قسم: {section_name}")
+
+        for service_name in service_names:
+
+            service = (
+                session.query(Service)
+                .filter_by(
+                    section_id=section.section_id,
+                    service_name=service_name,
+                )
+                .first()
+            )
+
+            if service is None:
+                session.add(
+                    Service(
+                        section_id=section.section_id,
+                        service_name=service_name,
+                    )
+                )
+
+                print(f"    - خدمة: {service_name}")
+
+
+# تعبئة المؤشرات
+
+
+def seed_indicators(session):
+    for item in INDICATORS:
+
+        indicator = (
+            session.query(Indicator)
+            .filter_by(
+                indicator_name=item["name"]
+            )
+            .first()
+        )
+
+        if indicator is None:
+            indicator = Indicator(
+                indicator_name=item["name"],
+                unit=item["unit"],
+                min_value=item["min_value"],
+                max_value=item["max_value"],
+                is_factor_based=item["is_factor_based"],
+            )
+
+            session.add(indicator)
+
+            print(f"+ مؤشر: {item['name']}")
+
+        else:
+            # تحديث بيانات المؤشر إذا تغيرت
+            indicator.unit = item["unit"]
+            indicator.min_value = item["min_value"]
+            indicator.max_value = item["max_value"]
+            indicator.is_factor_based = item["is_factor_based"]
+
+
+# تعبئة العوامل السبعة
+
+def seed_factors(session):
+    if len(FACTORS) != 7:
+        raise ValueError(
+            "يجب أن تحتوي قائمة FACTORS على سبعة عوامل بالضبط."
+        )
+
+    if len(set(FACTORS)) != 7:
+        raise ValueError(
+            "يوجد اسم عامل مكرر داخل قائمة FACTORS."
+        )
+
+    for display_order, factor_name in enumerate(
+        FACTORS,
+        start=1,
+    ):
+        clean_name = factor_name.strip()
+
+        if not clean_name:
+            raise ValueError(
+                f"اسم العامل رقم {display_order} فارغ."
+            )
+
+        factor = (
+            session.query(Factor)
+            .filter_by(
+                factor_name=clean_name
+            )
+            .first()
+        )
+
+        if factor is None:
+            factor = Factor(
+                factor_name=clean_name,
+                display_order=display_order,
+            )
+
+            session.add(factor)
+
+            print(
+                f"+ عامل {display_order}: {clean_name}"
+            )
+
+        else:
+            factor.display_order = display_order
+
+
+# التشغيل الرئيسي
+
 def seed():
-    # A session is one "conversation" with the database.
     session = SessionLocal()
+
     try:
-        # ---- Departments and their services ----
-        for department_name, service_names in DEPARTMENTS.items():
+        seed_sections_and_services(session)
+        seed_indicators(session)
+        seed_factors(session)
 
-            # Only add the department if it is not already there.
-            department = (session.query(Department)
-                          .filter_by(department_name=department_name)
-                          .first())
-            if department is None:
-                department = Department(department_name=department_name)
-                session.add(department)
-                session.flush()   # gives the new department its ID now
-                print(f"+ إدارة: {department_name}")
-
-            # Add each service under that department.
-            for service_name in service_names:
-                exists = (session.query(Service)
-                          .filter_by(service_name=service_name,
-                                     department_id=department.department_id)
-                          .first())
-                if exists is None:
-                    session.add(Service(service_name=service_name,
-                                        department_id=department.department_id))
-                    print(f"    - خدمة: {service_name}")
-
-        # ---- Indicators ----
-        for item in INDICATORS:
-            exists = (session.query(Indicator)
-                      .filter_by(indicator_name=item["name"])
-                      .first())
-            if exists is None:
-                session.add(Indicator(
-                    indicator_name=item["name"],
-                    unit=item["unit"],
-                    min_value=item["min_value"],
-                    max_value=item["max_value"],
-                ))
-                print(f"+ مؤشر: {item['name']}")
-
-        # Save everything at once.
         session.commit()
-        print("\nتمت تعبئة البيانات المرجعية بنجاح.")
+
+        print(
+            "\nتمت تعبئة البيانات المرجعية بنجاح."
+        )
 
     except Exception as error:
-        session.rollback()          # undo everything if something failed
-        print("فشلت التعبئة:", error)
+        session.rollback()
+
+        print(
+            "\nفشلت تعبئة البيانات المرجعية:"
+        )
+        print(error)
+
+        raise
+
     finally:
         session.close()
 

@@ -137,20 +137,58 @@ def donut_svg(fill_percent, display_text, color, size=140, stroke=14, font_size=
 '''
 
 
+def _number_or_none(value):
+    """تحويل القيمة إلى رقم، مع قبول None والقيم الفارغة."""
+    if value is None or value == "":
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _normalize(value, kind):
-    # يستخدم فقط لتحديد نسبة امتلاء الحلقة بصريًا (دايمًا من 0 إلى 100)
-    # kind == "percent": القيمة أصلاً من 0 إلى 100 (CSAT)
-    # kind == "range": القيمة من -100 إلى 100 (CES/NPS)
+    """
+    تحديد نسبة امتلاء الحلقة بصريًا.
+
+    عند عدم وجود قيمة نستخدم صفرًا للحلقة،
+    بينما النص داخلها يظهر كشرطة.
+    """
+    number = _number_or_none(value)
+
+    if number is None:
+        return 0.0
+
     if kind == "percent":
-        return value
-    return (value + 100) / 2
+        return min(max(number, 0.0), 100.0)
+
+    return min(max((number + 100.0) / 2.0, 0.0), 100.0)
 
 
 def _display_value(value, kind):
-    # الرقم المكتوب جوا الدائرة = القيمة الحقيقية للمؤشر، مو النسبة المطبّعة.
-    # نثبّته كرقم صحيح دايمًا (بدون .0) عشان ما يطول وينقطع من حافة الدائرة الصغيرة.
-    rounded = int(round(value))
+    """عرض القيمة الحقيقية أو شرطة عند عدم توفرها."""
+    number = _number_or_none(value)
+
+    if number is None:
+        return "—"
+
+    rounded = int(round(number))
+
     return f"{rounded}%" if kind == "percent" else f"{rounded}"
+
+
+def _display_table_value(value, kind=None):
+    """تنسيق القيم داخل القوائم والجداول."""
+    number = _number_or_none(value)
+
+    if number is None:
+        return "—"
+
+    if kind == "percent":
+        return f"{number:g}%"
+
+    return f"{number:g}"
 
 
 def kpi_block(col, label, current, prev, target, color, kind):
@@ -187,12 +225,35 @@ def kpi_block(col, label, current, prev, target, color, kind):
                 st.markdown('<div style="text-align:center; font-size:12px; color:#8A94B5;">السابق</div>', unsafe_allow_html=True)
 
 
-kpi_block(col_csat, "CSAT - رضا العميل", rec["csat_current"], rec["csat_prev"], rec["csat_target"],
-          color="#6C4AB6", kind="percent")
-kpi_block(col_ces, "CES - جهد العميل", rec["ces_current"], rec["ces_prev"], rec["ces_target"],
-          color="#2FA88E", kind="range")
-kpi_block(col_nps, "NPS - التوصية بالخدمة", rec["nps_current"], rec["nps_prev"], rec["nps_target"],
-          color="#3B82C4", kind="range")
+kpi_block(
+    col_csat,
+    "CSAT - رضا العميل",
+    rec.get("csat_current"),
+    rec.get("csat_prev"),
+    rec.get("csat_target"),
+    color="#6C4AB6",
+    kind="percent",
+)
+
+kpi_block(
+    col_ces,
+    "CES - جهد العميل",
+    rec.get("ces_current"),
+    rec.get("ces_prev"),
+    rec.get("ces_target"),
+    color="#2FA88E",
+    kind="range",
+)
+
+kpi_block(
+    col_nps,
+    "NPS - التوصية بالخدمة",
+    rec.get("nps_current"),
+    rec.get("nps_prev"),
+    rec.get("nps_target"),
+    color="#3B82C4",
+    kind="range",
+)
 
 # ---- أفضل 5 خدمات حسب CSAT + مخطط المقارنة ----
 col_top5, col_chart = st.columns([1, 1])
@@ -205,7 +266,15 @@ with col_top5:
             and (dept == "كل الإدارات" or r["department"] == dept)
         ]
 
-        top_services = sorted(scope_records, key=lambda r: r["csat_current"], reverse=True)[:5]
+        top_services = sorted(
+            scope_records,
+            key=lambda r: (
+                _number_or_none(r.get("csat_current"))
+                if _number_or_none(r.get("csat_current")) is not None
+                else float("-inf")
+            ),
+            reverse=True,
+        )[:5]
 
         if not top_services:
             st.markdown('<div class="card-title">أفضل 5 خدمات حسب CSAT</div>', unsafe_allow_html=True)
@@ -215,7 +284,7 @@ with col_top5:
                 (
                     '<div class="row">'
                     f'<span>{i + 1}. {r["service"]}</span>'
-                    f'<span class="count-square positive">{r["csat_current"]}%</span>'
+                    f'<span class="count-square positive">{_display_table_value(r.get("csat_current"), "percent")}</span>'
                     '</div>'
                 )
                 for i, r in enumerate(top_services)
@@ -235,9 +304,23 @@ with col_chart:
 
         # نفس الترتيب: CSAT ثم CES ثم NPS
         indicators = ["CSAT", "CES", "NPS"]
-        prev = [rec["csat_prev"], rec["ces_prev"], rec["nps_prev"]]
-        curr = [rec["csat_current"], rec["ces_current"], rec["nps_current"]]
-        targ = [rec["csat_target"], rec["ces_target"], rec["nps_target"]]
+        prev = [
+            _number_or_none(rec.get("csat_prev")),
+            _number_or_none(rec.get("ces_prev")),
+            _number_or_none(rec.get("nps_prev")),
+        ]
+
+        curr = [
+            _number_or_none(rec.get("csat_current")),
+            _number_or_none(rec.get("ces_current")),
+            _number_or_none(rec.get("nps_current")),
+        ]
+
+        targ = [
+            _number_or_none(rec.get("csat_target")),
+            _number_or_none(rec.get("ces_target")),
+            _number_or_none(rec.get("nps_target")),
+        ]
 
         fig = go.Figure()
         fig.add_bar(name="السابق", x=indicators, y=prev, marker_color=COLORS["muted"], marker_cornerradius=8)
@@ -297,14 +380,28 @@ st.markdown("""
 
 
 def make_row(r):
-    return (f'<tr>'
-            f'<td>{r["department"]}</td>'
-            f'<td>{r["service"]}</td>'
-            f'<td>{r["period"]} - {r["year"]}</td>'
-            f'<td><span class="metric-pill pill-purple">{r["csat_current"]}%</span></td>'
-            f'<td><span class="metric-pill pill-green">{r["ces_current"]}</span></td>'
-            f'<td><span class="metric-pill pill-blue">{r["nps_current"]}</span></td>'
-            f'</tr>')
+    section_name = (
+        r.get("section")
+        or r.get("department")
+        or "—"
+    )
+
+    return (
+        f'<tr>'
+        f'<td>{section_name}</td>'
+        f'<td>{r.get("service", "—")}</td>'
+        f'<td>{r.get("period", "—")} - {r.get("year", "—")}</td>'
+        f'<td><span class="metric-pill pill-purple">'
+        f'{_display_table_value(r.get("csat_current"), "percent")}'
+        f'</span></td>'
+        f'<td><span class="metric-pill pill-green">'
+        f'{_display_table_value(r.get("ces_current"))}'
+        f'</span></td>'
+        f'<td><span class="metric-pill pill-blue">'
+        f'{_display_table_value(r.get("nps_current"))}'
+        f'</span></td>'
+        f'</tr>'
+    )
 
 
 rows_html = "".join(make_row(r) for r in mock_records)

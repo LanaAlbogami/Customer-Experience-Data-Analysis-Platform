@@ -1,64 +1,145 @@
-from sqlalchemy import select
-from database.connection import SessionLocal
-from database.models import Department, Service, MeasurementRecord, IndicatorResult, Indicator
+from __future__ import annotations
+
+from collections.abc import Mapping
 
 import pandas as pd
+from sqlalchemy import select
 
 from calculations import (
-    calculate_csat,
     calculate_ces,
+    calculate_csat,
     calculate_nps,
 )
+from database.connection import SessionLocal
+from database.models import (
+    Factor,
+    FactorResult,
+    Indicator,
+    IndicatorResult,
+    MeasurementRecord,
+    Section,
+    Service,
+)
 
-
-def fetch_records_from_db():
-    """يرجع قائمة بنفس شكل mock_records بالضبط، لكن من الداتابيز الحقيقية."""
-    session = SessionLocal()
-    try:
-        rows = session.execute(
-            select(MeasurementRecord, Service, Department)
-            .join(Service, MeasurementRecord.service_id == Service.service_id)
-            .join(Department, Service.department_id == Department.department_id)
-        ).all()
-
-        result = []
-        for mrecord, service, dept in rows:
-            row = {
-                "department": dept.department_name,
-                "service": service.service_name,
-                "year": mrecord.year,
-                "period": mrecord.period,
-                "status": "معتمد",  # ملاحظة: ما فيه عمود status بجدولكم حاليًا، قيمة ثابتة مؤقتًا
-            }
-
-            indicator_rows = session.execute(
-                select(IndicatorResult, Indicator)
-                .join(Indicator, IndicatorResult.indicator_id == Indicator.indicator_id)
-                .where(IndicatorResult.record_id == mrecord.record_id)
-            ).all()
-
-            for ind_result, indicator in indicator_rows:
-                key = indicator.indicator_name.lower()  # "nps" / "ces" / "csat"
-                row[f"{key}_prev"] = float(ind_result.prev_value or 0)
-                row[f"{key}_current"] = float(ind_result.current_value)
-                row[f"{key}_target"] = float(ind_result.target_value)
-
-            result.append(row)
-        return result
-    finally:
-        session.close()
-
-# ----------------------------------------------------------------------
-# تجهيز ملفات Excel قبل حفظها في قاعدة البيانات
-# ----------------------------------------------------------------------
 
 RAW_DATA = "raw"
 CALCULATED_DATA = "calculated"
 
 
+def _decimal_to_float(value):
+    """تحويل Decimal إلى float مع الحفاظ على None."""
+    return None if value is None else float(value)
+
+
+def fetch_records_from_db():
+    """
+    يرجع سجلات القياس مع نتائج المؤشرات والعوامل.
+
+    تم إبقاء department مؤقتًا للتوافق مع الصفحات القديمة،
+    لكنه يحمل نفس قيمة section.
+    """
+
+    with SessionLocal() as session:
+        rows = session.execute(
+            select(
+                MeasurementRecord,
+                Service,
+                Section,
+            )
+            .join(
+                Service,
+                MeasurementRecord.service_id
+                == Service.service_id,
+            )
+            .join(
+                Section,
+                Service.section_id
+                == Section.section_id,
+            )
+        ).all()
+
+        output = []
+
+        for record, service, section in rows:
+            row = {
+                "section": section.section_name,
+                "department": section.section_name,
+                "service": service.service_name,
+                "year": record.year,
+                "period": record.period,
+                "participants": record.participants_count,
+                "review": record.review,
+                "status": "معتمد",
+                "factors": {},
+            }
+
+            indicator_rows = session.execute(
+                select(
+                    IndicatorResult,
+                    Indicator,
+                )
+                .join(
+                    Indicator,
+                    IndicatorResult.indicator_id
+                    == Indicator.indicator_id,
+                )
+                .where(
+                    IndicatorResult.record_id
+                    == record.record_id
+                )
+            ).all()
+
+            for result, indicator in indicator_rows:
+                code = indicator.indicator_name.lower()
+
+                row[f"{code}_prev"] = _decimal_to_float(
+                    result.prev_value
+                )
+                row[f"{code}_current"] = _decimal_to_float(
+                    result.current_value
+                )
+                row[f"{code}_target"] = _decimal_to_float(
+                    result.target_value
+                )
+
+            factor_rows = session.execute(
+                select(
+                    FactorResult,
+                    Factor,
+                )
+                .join(
+                    Factor,
+                    FactorResult.factor_id
+                    == Factor.factor_id,
+                )
+                .where(
+                    FactorResult.record_id
+                    == record.record_id
+                )
+                .order_by(Factor.display_order)
+            ).all()
+
+            for result, factor in factor_rows:
+                row["factors"][factor.factor_name] = {
+                    "participants_count": result.participants_count,
+                    "previous_value": _decimal_to_float(
+                        result.prev_value
+                    ),
+                    "current_value": _decimal_to_float(
+                        result.current_value
+                    ),
+                    "target_value": _decimal_to_float(
+                        result.target_value
+                    ),
+                }
+
+            output.append(row)
+
+        return output
+
+
 def _clean_text(value):
     """تحويل القيمة إلى نص نظيف."""
-
     if pd.isna(value):
         return ""
 
@@ -66,11 +147,7 @@ def _clean_text(value):
 
 
 def _period_code(value):
-    """
-    تحويل الفترة إلى H1 أو H2،
-    وهي الصيغة المستخدمة في قاعدة البيانات.
-    """
-
+    """تحويل قيمة الفترة إلى الاسم العربي المعتمد."""
     if pd.isna(value):
         return None
 
@@ -102,18 +179,17 @@ def _period_code(value):
     }
 
     if cleaned in first_half:
-        return "H1"
+        return "النصف الأول"
 
     if cleaned in second_half:
-        return "H2"
+        return "النصف الثاني"
 
     return None
 
 
 def _period_from_month(month):
-    """تحويل الشهر إلى H1 أو H2."""
-
-    return "H1" if int(month) <= 6 else "H2"
+    """تحويل رقم الشهر إلى النصف الأول أو النصف الثاني."""
+    return "النصف الأول" if int(month) <= 6 else "النصف الثاني"
 
 
 def _read_numeric_value(value):
@@ -123,7 +199,6 @@ def _read_numeric_value(value):
     -20
     85%
     """
-
     if pd.isna(value):
         return None
 
@@ -148,14 +223,13 @@ def _read_numeric_value(value):
 
 def _read_percentage_value(value):
     """
-    قراءة نسبة محسوبة مسبقًا.
+    قراءة نسبة بين 0 و100.
 
     يدعم:
     85
     85%
     0.85
     """
-
     number = _read_numeric_value(value)
 
     if number is None:
@@ -164,7 +238,7 @@ def _read_percentage_value(value):
     if 0 <= number <= 1:
         number *= 100
 
-    if number < 0 or number > 100:
+    if not 0 <= number <= 100:
         raise ValueError(
             f"النسبة يجب أن تكون بين 0 و100: {number}"
         )
@@ -172,17 +246,17 @@ def _read_percentage_value(value):
     return round(number, 2)
 
 
-def _read_nps_value(value):
-    """قراءة قيمة NPS محسوبة مسبقًا."""
-
+def _read_net_score_value(value, field_name):
+    """قراءة قيمة CES أو NPS بين -100 و100."""
     number = _read_numeric_value(value)
 
     if number is None:
         return None
 
-    if number < -100 or number > 100:
+    if not -100 <= number <= 100:
         raise ValueError(
-            f"قيمة NPS يجب أن تكون بين -100 و100: {number}"
+            f"قيمة {field_name} يجب أن تكون بين -100 و100: "
+            f"{number}"
         )
 
     return round(number, 2)
@@ -197,10 +271,9 @@ def _single_group_value(
     """
     قراءة قيمة واحدة من مجموعة.
 
-    يسمح بتكرار القيمة نفسها،
-    لكنه يرفض وجود قيم مختلفة لنفس الخدمة والفترة.
+    يسمح بتكرار القيمة نفسها، لكنه يرفض وجود قيم مختلفة
+    لنفس الخدمة والسنة والفترة.
     """
-
     if not column_name:
         return None
 
@@ -233,11 +306,7 @@ def _average_question_scores(
     minimum,
     maximum,
 ):
-    """
-    حساب المؤشر لكل سؤال،
-    ثم حساب متوسط نتائج الأسئلة المختارة.
-    """
-
+    """حساب المؤشر لكل سؤال، ثم أخذ متوسط نتائج الأسئلة."""
     scores = []
 
     for column_name in columns:
@@ -253,9 +322,7 @@ def _average_question_scores(
             )
         ]
 
-        score = calculation_function(
-            valid_answers
-        )
+        score = calculation_function(valid_answers)
 
         if score is not None:
             scores.append(score)
@@ -263,18 +330,11 @@ def _average_question_scores(
     if not scores:
         return None
 
-    return round(
-        sum(scores) / len(scores),
-        2,
-    )
+    return round(sum(scores) / len(scores), 2)
 
 
-def _collect_comments(
-    group,
-    comment_columns,
-):
-    """جمع التعليقات وحذف الفارغ والمكرر."""
-
+def _collect_comments(group, comment_columns):
+    """جمع التعليقات مع حذف الفارغ والمكرر."""
     ignored_comments = {
         "",
         "لا يوجد تعليق",
@@ -295,7 +355,6 @@ def _collect_comments(
                 continue
 
             comment = str(value).strip()
-
             normalized = comment.lower()
 
             if normalized in ignored_comments:
@@ -313,48 +372,240 @@ def _collect_comments(
     return "\n".join(comments)
 
 
+def _load_fixed_factor_names():
+    """قراءة أسماء العوامل السبعة من جدول Factors حسب DisplayOrder."""
+    with SessionLocal() as session:
+        factors = (
+            session.query(Factor)
+            .order_by(Factor.display_order)
+            .all()
+        )
+
+        names = [
+            factor.factor_name
+            for factor in factors
+        ]
+
+    if not names:
+        raise ValueError(
+            "جدول Factors فارغ. شغلي seed_data.py أولًا."
+        )
+
+    if len(names) != 7:
+        raise ValueError(
+            "يجب أن يحتوي جدول Factors على سبعة عوامل بالضبط، "
+            f"لكن الموجود حاليًا: {len(names)}."
+        )
+
+    return names
+
+
+def _resolve_factor_mapping(
+    selected,
+    available_columns,
+    field_name,
+):
+    """
+    يحول اختيار أعمدة العوامل إلى:
+        {اسم العامل الثابت: اسم عمود Excel}
+
+    يدعم:
+    1) dict من صفحة الرفع الجديدة.
+    2) list من الصفحة الحالية، ويُربط حسب ترتيب الاختيار.
+    """
+    factor_names = _load_fixed_factor_names()
+
+    if isinstance(selected, Mapping):
+        mapping = {
+            str(factor_name).strip(): str(column_name).strip()
+            for factor_name, column_name in selected.items()
+            if column_name
+        }
+
+        missing_factors = [
+            name
+            for name in factor_names
+            if name not in mapping
+        ]
+
+        extra_factors = [
+            name
+            for name in mapping
+            if name not in factor_names
+        ]
+
+        if missing_factors:
+            raise ValueError(
+                f"{field_name}: لم يتم ربط العوامل التالية: "
+                + "، ".join(missing_factors)
+            )
+
+        if extra_factors:
+            raise ValueError(
+                f"{field_name}: توجد عوامل غير معتمدة: "
+                + "، ".join(extra_factors)
+            )
+
+        ordered_mapping = {
+            name: mapping[name]
+            for name in factor_names
+        }
+
+    else:
+        columns = list(selected or [])
+
+        if len(columns) != len(factor_names):
+            raise ValueError(
+                f"{field_name}: يجب اختيار سبعة أعمدة بالضبط."
+            )
+
+        ordered_mapping = dict(
+            zip(
+                factor_names,
+                columns,
+                strict=True,
+            )
+        )
+
+    selected_columns = list(ordered_mapping.values())
+
+    if len(selected_columns) != len(set(selected_columns)):
+        raise ValueError(
+            f"{field_name}: لا يمكن ربط العمود نفسه بأكثر من عامل."
+        )
+
+    missing_columns = [
+        column_name
+        for column_name in selected_columns
+        if column_name not in available_columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            f"{field_name}: الأعمدة التالية غير موجودة في الملف: "
+            + "، ".join(missing_columns)
+        )
+
+    return ordered_mapping
+
+
+def _calculate_raw_factor_results(
+    group,
+    factor_mapping,
+):
+    """
+    حساب CSAT لكل عامل على حدة.
+
+    CurrentValue:
+        نسبة الإجابات 4 و5.
+
+    ParticipantsCount:
+        عدد الإجابات الصحيحة من 1 إلى 5.
+    """
+    results = {}
+
+    for factor_name, column_name in factor_mapping.items():
+        numeric_answers = pd.to_numeric(
+            group[column_name],
+            errors="coerce",
+        )
+
+        valid_answers = numeric_answers[
+            numeric_answers.between(1, 5)
+        ]
+
+        results[factor_name] = {
+            "current_value": calculate_csat(valid_answers),
+            "participants_count": int(
+                valid_answers.count()
+            ),
+        }
+
+    return results
+
+
+def _read_calculated_factor_results(
+    group,
+    factor_mapping,
+):
+    """قراءة نتائج عوامل CSAT المحسوبة مسبقًا."""
+    results = {}
+
+    for factor_name, column_name in factor_mapping.items():
+        value = _single_group_value(
+            group=group,
+            column_name=column_name,
+            reader=_read_percentage_value,
+            field_name=f"عامل {factor_name}",
+        )
+
+        results[factor_name] = {
+            "current_value": value,
+            "participants_count": None,
+        }
+
+    return results
+
+
+def _calculate_overall_csat(factor_results):
+    """حساب CSAT العام من متوسط نتائج العوامل المتوفرة."""
+    values = [
+        item["current_value"]
+        for item in factor_results.values()
+        if item["current_value"] is not None
+    ]
+
+    if not values:
+        return None
+
+    return round(sum(values) / len(values), 2)
+
+
 def prepare_uploaded_records(
     dataframe,
     data_mode,
     service_column,
-    department_column=None,
-    fixed_department=None,
+    section_column=None,
+    fixed_section=None,
     response_id_column=None,
     date_column=None,
     year_column=None,
     period_column=None,
     fixed_year=None,
     fixed_period=None,
-    csat_columns=None,
+    factor_columns=None,
+    factor_column_mapping=None,
     ces_columns=None,
     nps_column=None,
-    calculated_csat_column=None,
+    calculated_factor_columns=None,
+    calculated_factor_column_mapping=None,
     calculated_ces_column=None,
     calculated_nps_column=None,
+    calculated_bps_column=None,
     participants_column=None,
     comment_columns=None,
 ):
     """
     تجهيز ملف Excel للحفظ.
 
-    data_mode:
-        raw         -> إجابات استبيان خام
-        calculated  -> مؤشرات محسوبة مسبقًا
+    raw:
+        يحسب نتيجة مستقلة لكل عامل من العوامل السبعة.
 
-    ترجع قائمة بالشكل المتوقع من:
-        entry_backend.save_uploaded_records()
+    calculated:
+        يقرأ نتائج العوامل والمؤشرات المحسوبة مسبقًا.
     """
-
-    csat_columns = csat_columns or []
     ces_columns = ces_columns or []
     comment_columns = comment_columns or []
 
     data = dataframe.copy()
+    available_columns = data.columns.tolist()
 
-    # -----------------------------------------------------
+    if service_column not in available_columns:
+        raise ValueError(
+            f"عمود الخدمة غير موجود في الملف: {service_column}"
+        )
+
     # الخدمة
-    # -----------------------------------------------------
-
     data["_service"] = (
         data[service_column]
         .apply(_clean_text)
@@ -365,36 +616,34 @@ def prepare_uploaded_records(
             "يوجد صف بدون اسم خدمة."
         )
 
-    # -----------------------------------------------------
     # القسم
-    # -----------------------------------------------------
+    if section_column:
+        if section_column not in available_columns:
+            raise ValueError(
+                f"عمود القسم غير موجود في الملف: {section_column}"
+            )
 
-    if department_column:
-        data["_department"] = (
-            data[department_column]
+        data["_section"] = (
+            data[section_column]
             .apply(_clean_text)
         )
 
-        if (data["_department"] == "").any():
+        if (data["_section"] == "").any():
             raise ValueError(
                 "يوجد صف بدون اسم قسم."
             )
 
-    elif fixed_department:
-        data["_department"] = (
-            str(fixed_department).strip()
-        )
+    elif fixed_section:
+        data["_section"] = str(
+            fixed_section
+        ).strip()
 
     else:
         raise ValueError(
-            "يجب اختيار عمود القسم "
-            "أو إدخال اسم قسم ثابت."
+            "يجب اختيار عمود القسم أو تحديد اسم قسم ثابت."
         )
 
-    # -----------------------------------------------------
     # السنة والفترة
-    # -----------------------------------------------------
-
     if date_column:
         parsed_dates = pd.to_datetime(
             data[date_column],
@@ -407,10 +656,7 @@ def prepare_uploaded_records(
                 "يوجد تاريخ غير صحيح في الملف."
             )
 
-        data["_year"] = (
-            parsed_dates.dt.year
-        )
-
+        data["_year"] = parsed_dates.dt.year
         data["_period"] = (
             parsed_dates.dt.month.apply(
                 _period_from_month
@@ -438,14 +684,10 @@ def prepare_uploaded_records(
                 "يوجد اسم فترة غير معروف في الملف."
             )
 
-    elif fixed_year and fixed_period:
-        data["_year"] = int(
-            fixed_year
-        )
+    elif fixed_year is not None and fixed_period:
+        data["_year"] = int(fixed_year)
 
-        period = _period_code(
-            fixed_period
-        )
+        period = _period_code(fixed_period)
 
         if period is None:
             raise ValueError(
@@ -456,18 +698,45 @@ def prepare_uploaded_records(
 
     else:
         raise ValueError(
-            "يجب تحديد التاريخ، "
-            "أو عمودي السنة والفترة، "
+            "يجب تحديد التاريخ، أو عمودي السنة والفترة، "
             "أو سنة وفترة ثابتة."
         )
 
-    # -----------------------------------------------------
-    # تجميع البيانات
-    # -----------------------------------------------------
+    # ربط عوامل CSAT
+    if data_mode == RAW_DATA:
+        selected_factors = (
+            factor_column_mapping
+            if factor_column_mapping is not None
+            else factor_columns
+        )
+
+        factor_mapping = _resolve_factor_mapping(
+            selected=selected_factors,
+            available_columns=available_columns,
+            field_name="عوامل CSAT",
+        )
+
+    elif data_mode == CALCULATED_DATA:
+        selected_factors = (
+            calculated_factor_column_mapping
+            if calculated_factor_column_mapping is not None
+            else calculated_factor_columns
+        )
+
+        factor_mapping = _resolve_factor_mapping(
+            selected=selected_factors,
+            available_columns=available_columns,
+            field_name="نتائج عوامل CSAT",
+        )
+
+    else:
+        raise ValueError(
+            "نوع بيانات المؤشرات غير معروف."
+        )
 
     grouped_data = data.groupby(
         [
-            "_department",
+            "_section",
             "_service",
             "_year",
             "_period",
@@ -479,15 +748,11 @@ def prepare_uploaded_records(
     prepared_records = []
 
     for (
-        department,
+        section,
         service,
         year,
         period,
     ), group in grouped_data:
-
-        # -------------------------------------------------
-        # عدد المشاركين
-        # -------------------------------------------------
 
         if (
             data_mode == CALCULATED_DATA
@@ -500,11 +765,10 @@ def prepare_uploaded_records(
                 field_name="عدد المشاركين",
             )
 
-            if participants is None:
-                participants = 0
-
-            participants = int(
-                participants
+            participants = (
+                0
+                if participants is None
+                else int(participants)
             )
 
         elif response_id_column:
@@ -517,33 +781,18 @@ def prepare_uploaded_records(
         else:
             participants = len(group)
 
-        # -------------------------------------------------
-        # المؤشرات
-        # -------------------------------------------------
-
         if data_mode == RAW_DATA:
-            csat_value = (
-                _average_question_scores(
-                    group=group,
-                    columns=csat_columns,
-                    calculation_function=(
-                        calculate_csat
-                    ),
-                    minimum=1,
-                    maximum=5,
-                )
+            factor_results = _calculate_raw_factor_results(
+                group=group,
+                factor_mapping=factor_mapping,
             )
 
-            ces_value = (
-                _average_question_scores(
-                    group=group,
-                    columns=ces_columns,
-                    calculation_function=(
-                        calculate_ces
-                    ),
-                    minimum=1,
-                    maximum=5,
-                )
+            ces_value = _average_question_scores(
+                group=group,
+                columns=ces_columns,
+                calculation_function=calculate_ces,
+                minimum=1,
+                maximum=5,
             )
 
             nps_value = None
@@ -555,88 +804,75 @@ def prepare_uploaded_records(
                 )
 
                 valid_nps = numeric_nps[
-                    numeric_nps.between(
-                        0,
-                        10,
-                    )
+                    numeric_nps.between(0, 10)
                 ]
 
-                nps_value = calculate_nps(
-                    valid_nps
-                )
+                nps_value = calculate_nps(valid_nps)
 
-        elif data_mode == CALCULATED_DATA:
-            csat_value = _single_group_value(
+            bps_value = None
+
+        else:
+            factor_results = _read_calculated_factor_results(
                 group=group,
-                column_name=(
-                    calculated_csat_column
-                ),
-                reader=(
-                    _read_percentage_value
-                ),
-                field_name="CSAT",
+                factor_mapping=factor_mapping,
             )
 
             ces_value = _single_group_value(
                 group=group,
-                column_name=(
-                    calculated_ces_column
-                ),
-                reader=(
-                    _read_numeric_value
+                column_name=calculated_ces_column,
+                reader=lambda value: _read_net_score_value(
+                    value,
+                    "CES",
                 ),
                 field_name="CES",
             )
 
             nps_value = _single_group_value(
                 group=group,
-                column_name=(
-                    calculated_nps_column
+                column_name=calculated_nps_column,
+                reader=lambda value: _read_net_score_value(
+                    value,
+                    "NPS",
                 ),
-                reader=_read_nps_value,
                 field_name="NPS",
             )
 
-        else:
-            raise ValueError(
-                "نوع بيانات المؤشرات غير معروف."
+            bps_value = _single_group_value(
+                group=group,
+                column_name=calculated_bps_column,
+                reader=_read_percentage_value,
+                field_name="BPS",
             )
 
-        # -------------------------------------------------
-        # التعليقات
-        # -------------------------------------------------
+        overall_csat = _calculate_overall_csat(
+            factor_results
+        )
 
         review = _collect_comments(
             group=group,
-            comment_columns=(
-                comment_columns
-            ),
+            comment_columns=comment_columns,
         )
 
         prepared_records.append(
             {
-                "department": str(
-                    department
-                ).strip(),
+                "section": str(section).strip(),
 
-                "service": str(
-                    service
-                ).strip(),
+                # مؤقتًا للتوافق مع entry_backend القديم.
+                "department": str(section).strip(),
 
+                "service": str(service).strip(),
                 "year": int(year),
-
                 "period": period,
-
-                "participants": (
-                    participants
-                ),
-
+                "participants": participants,
                 "review": review,
 
+                "factors": factor_results,
+
                 "indicators": {
-                    "CSAT": csat_value,
+                    "CSAT": overall_csat,
                     "CES": ces_value,
                     "NPS": nps_value,
+                    "BPS": bps_value,
                 },
             }
         )
