@@ -419,7 +419,7 @@ with col_chart:
 # ---- توزيع CSAT حسب العوامل (Factors) للخدمة أو العرض العام المختار ----
 with st.container(border=True):
     st.markdown(
-        '<div class="card-title">CSAT حسب العوامل</div>',
+        '<div class="card-title" style="text-align:center;">CSAT حسب العوامل</div>',
         unsafe_allow_html=True,
     )
 
@@ -468,6 +468,7 @@ with st.container(border=True):
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             height=max(340, 80 * len(display_names)),
+            bargap=0.45,                  # يخلي الأشرطة أرفع بدل ما تملأ الصف كامل
             margin=dict(l=10, r=200, t=10, b=10),
             font=dict(color="#16213E", size=13),
             xaxis=dict(
