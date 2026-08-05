@@ -1,3 +1,5 @@
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -16,13 +18,11 @@ apply_theme()
 st.markdown(
     """
     <style>
-    /* اتجاه الصفحة بالكامل */
     div[data-testid="stMainBlockContainer"] {
         direction: rtl;
         text-align: right;
     }
 
-    /* العناوين والنصوص والوصف */
     div[data-testid="stMarkdownContainer"],
     div[data-testid="stCaptionContainer"],
     label[data-testid="stWidgetLabel"] {
@@ -35,52 +35,23 @@ st.markdown(
         text-align: right;
     }
 
-    /* القوائم المنسدلة */
-    div[data-baseweb="select"] > div {
-        direction: rtl;
-        text-align: right;
-    }
-
-    div[data-baseweb="select"] span {
-        direction: rtl;
-        text-align: right;
-    }
-
-    /* حقول الإدخال */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="select"] span,
     div[data-baseweb="input"] > div,
     div[data-baseweb="input"] input {
         direction: rtl;
         text-align: right;
     }
 
-    /* أزرار الاختيار Radio */
     div[role="radiogroup"] {
         direction: rtl;
         justify-content: flex-start;
     }
 
-    div[role="radiogroup"] label {
-        direction: rtl;
-    }
-
-    /* الاختيارات المتعددة */
-    div[data-baseweb="tag"] {
-        direction: rtl;
-    }
-
-    /* رسائل النجاح والخطأ والتنبيه */
-    div[data-testid="stAlert"] {
-        direction: rtl;
-        text-align: right;
-    }
-
-    /* الأزرار */
-    div[data-testid="stButton"] {
-        direction: rtl;
-        text-align: right;
-    }
-
-    /* محتوى الـ expander */
+    div[role="radiogroup"] label,
+    div[data-baseweb="tag"],
+    div[data-testid="stAlert"],
+    div[data-testid="stButton"],
     details {
         direction: rtl;
         text-align: right;
@@ -91,22 +62,27 @@ st.markdown(
 )
 
 
+# ==================================================
 # خيارات الواجهة
+# ==================================================
 
 NO_COLUMN = "غير موجود"
 
-DEPARTMENT_FROM_COLUMN = "القسم موجود داخل الملف"
-DEPARTMENT_FIXED = "كل الملف تابع لقسم واحد"
+SECTION_NONE = "لا يوجد قسم داخل الملف"
+SECTION_FROM_COLUMN = "يوجد عمود قسم داخل الملف"
 
 TIME_FROM_DATE = "يوجد عمود تاريخ"
-TIME_FROM_COLUMNS = "يوجد عمود سنة وعمود فترة"
+TIME_FROM_COMBINED = "السنة والفترة في عمود واحد"
+TIME_FROM_COLUMNS = "السنة والفترة في عمودين منفصلين"
 TIME_FIXED = "سنة وفترة واحدة لكل الملف"
 
 RAW_DATA_LABEL = "إجابات استبيان خام"
-CALCULATED_DATA_LABEL = "مؤشرات محسوبة مسبقًا"
+CALCULATED_DATA_LABEL = "نتائج محسوبة مسبقًا"
 
 
-# دوال بسيطة للواجهة
+# ==================================================
+# دوال مساعدة للواجهة
+# ==================================================
 
 def find_default_index(options, preferred_names):
     """اختيار العمود المتوقع تلقائيًا إذا كان موجودًا."""
@@ -128,7 +104,79 @@ def find_default_columns(columns, preferred_names):
     ]
 
 
+def parse_year_period(value):
+    """
+    يحول قيمة مثل:
+    النصف الأول 2025
+    النصف الثاني 2025
+    2025 H1
+    H2 2025
+
+    إلى سنة وفترة منفصلتين.
+    """
+
+    if pd.isna(value):
+        raise ValueError("قيمة السنة والفترة فارغة.")
+
+    text = str(value).strip()
+
+    text = text.translate(
+        str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+    )
+
+    normalized = (
+        text.lower()
+        .replace("أ", "ا")
+        .replace("إ", "ا")
+        .replace("آ", "ا")
+        .replace("_", " ")
+        .replace("-", " ")
+    )
+
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    year_match = re.search(r"\b(?:19|20)\d{2}\b", normalized)
+
+    if not year_match:
+        raise ValueError(
+            f"تعذر استخراج السنة من القيمة: {text}"
+        )
+
+    year = int(year_match.group())
+
+    first_half_patterns = [
+        "النصف الاول",
+        "النصف 1",
+        "h1",
+        "half 1",
+        "first half",
+    ]
+
+    second_half_patterns = [
+        "النصف الثاني",
+        "النصف 2",
+        "h2",
+        "half 2",
+        "second half",
+    ]
+
+    if any(pattern in normalized for pattern in first_half_patterns):
+        period = "النصف الأول"
+
+    elif any(pattern in normalized for pattern in second_half_patterns):
+        period = "النصف الثاني"
+
+    else:
+        raise ValueError(
+            f"تعذر تحديد النصف الأول أو الثاني من القيمة: {text}"
+        )
+
+    return year, period
+
+
+# ==================================================
 # عنوان الصفحة
+# ==================================================
 
 st.markdown(
     """
@@ -143,7 +191,9 @@ st.markdown(
 )
 
 
+# ==================================================
 # رفع الملف
+# ==================================================
 
 uploaded_file = st.file_uploader(
     "اسحب ملف Excel هنا أو اضغط للاختيار",
@@ -161,41 +211,30 @@ if uploaded_file is not None:
         ]
 
     except Exception as error:
-        st.error(
-            f"تعذر قراءة ملف Excel: {error}"
-        )
+        st.error(f"تعذر قراءة ملف Excel: {error}")
         st.stop()
 
     if dataframe.empty:
-        st.warning(
-            "ملف Excel لا يحتوي على بيانات."
-        )
+        st.warning("ملف Excel لا يحتوي على بيانات.")
         st.stop()
 
-    available_columns = (
-        dataframe.columns.tolist()
-    )
-
-    optional_columns = (
-        [NO_COLUMN]
-        + available_columns
-    )
+    available_columns = dataframe.columns.tolist()
+    optional_columns = [NO_COLUMN] + available_columns
 
     st.success(
         f"تمت قراءة الملف بنجاح — عدد الصفوف: {len(dataframe)}"
     )
 
-    with st.expander(
-        "معاينة الملف",
-        expanded=False,
-    ):
+    with st.expander("معاينة الملف", expanded=False):
         st.dataframe(
             dataframe.head(20),
             use_container_width=True,
             hide_index=True,
         )
 
+    # ==================================================
     # 1. البيانات الأساسية
+    # ==================================================
 
     with st.container(border=True):
         st.markdown("## 1. البيانات الأساسية")
@@ -219,27 +258,25 @@ if uploaded_file is not None:
             ),
         )
 
-        # القسم
-        
-
         st.markdown("#### القسم")
 
-        department_mode = st.radio(
+        section_mode = st.radio(
             "طريقة تحديد القسم",
             options=[
-                DEPARTMENT_FROM_COLUMN,
-                DEPARTMENT_FIXED,
+                SECTION_NONE,
+                SECTION_FROM_COLUMN,
             ],
+            index=0,
             horizontal=True,
             label_visibility="collapsed",
         )
 
-        department_column = None
-        fixed_department = None
+        section_column = None
+        fixed_section = "غير محدد"
 
-        if department_mode == DEPARTMENT_FROM_COLUMN:
-            department_column = st.selectbox(
-                "عمود اسم القسم *",
+        if section_mode == SECTION_FROM_COLUMN:
+            section_column = st.selectbox(
+                "عمود اسم القسم",
                 options=available_columns,
                 index=find_default_index(
                     available_columns,
@@ -247,18 +284,19 @@ if uploaded_file is not None:
                         "اسم_القسم",
                         "اسم القسم",
                         "القسم",
+                        "Section",
+                        "Section Name",
                         "Department",
                     ],
                 ),
             )
 
-        else:
-            fixed_department = st.text_input(
-                "اسم القسم الذي يخص جميع صفوف الملف *",
-                placeholder="مثال: إدارة تجربة العميل",
-            )
+            fixed_section = None
 
-        # السنة والفترة
+        else:
+            st.caption(
+                'سيُحفظ القسم تلقائيًا باسم "غير محدد".'
+            )
 
         st.markdown("#### السنة والفترة")
 
@@ -266,13 +304,16 @@ if uploaded_file is not None:
             "طريقة تحديد السنة والفترة",
             options=[
                 TIME_FROM_DATE,
+                TIME_FROM_COMBINED,
                 TIME_FROM_COLUMNS,
                 TIME_FIXED,
             ],
+            index=1,
             horizontal=True,
             label_visibility="collapsed",
         )
 
+        combined_time_column = None
         date_column = None
         year_column = None
         period_column = None
@@ -295,7 +336,28 @@ if uploaded_file is not None:
                 ),
                 help=(
                     "سيستخرج النظام السنة تلقائيًا، "
-                    "ويحدد النصف الأول أو الثاني من الشهر."
+                    "ويحدد النصف الأول أو الثاني حسب الشهر."
+                ),
+            )
+
+        elif time_mode == TIME_FROM_COMBINED:
+            combined_time_column = st.selectbox(
+                "عمود السنة والفترة *",
+                options=available_columns,
+                index=find_default_index(
+                    available_columns,
+                    [
+                        "فترة القياس",
+                        "السنة والفترة",
+                        "السنة و الفترة",
+                        "الفترة الزمنية",
+                        "Measurement Period",
+                        "Period",
+                    ],
+                ),
+                help=(
+                    "أمثلة مقبولة: النصف الأول 2025، "
+                    "النصف الثاني 2025، H1 2025، H2 2025."
                 ),
             )
 
@@ -357,10 +419,12 @@ if uploaded_file is not None:
                     ],
                 )
 
-    # 2. المؤشرات
+    # ==================================================
+    # 2. عوامل CSAT والمؤشرات الأخرى
+    # ==================================================
 
     with st.container(border=True):
-        st.markdown("## 2. المؤشرات")
+        st.markdown("## 2. عوامل CSAT والمؤشرات")
 
         data_mode_label = st.radio(
             "نوع البيانات الموجودة داخل الملف",
@@ -371,24 +435,21 @@ if uploaded_file is not None:
             horizontal=True,
         )
 
-        # قيم افتراضية للمتغيرات
         response_id_column = None
 
-        csat_columns = []
+        factor_columns = []
         ces_columns = []
         nps_column = None
 
-        calculated_csat_column = None
+        calculated_factor_columns = []
         calculated_ces_column = None
         calculated_nps_column = None
         participants_column = None
 
-        # بيانات استبيان خام
-
         if data_mode_label == RAW_DATA_LABEL:
             st.caption(
-                "اختاري أعمدة إجابات الاستبيان، "
-                "وسيحسب النظام المؤشرات تلقائيًا."
+                "اختاري أعمدة العوامل الثمانية وإجابات المؤشرات، "
+                "وسيحسب النظام النتائج تلقائيًا."
             )
 
             response_id_selection = st.selectbox(
@@ -410,40 +471,26 @@ if uploaded_file is not None:
             )
 
             if response_id_selection != NO_COLUMN:
-                response_id_column = (
-                    response_id_selection
-                )
+                response_id_column = response_id_selection
 
-            default_csat_columns = (
-                find_default_columns(
-                    available_columns,
-                    [
-                        "تقييم_1",
-                        "CSAT",
-                        "الرضا العام",
-                    ],
-                )
-            )
-
-            default_ces_columns = (
-                find_default_columns(
-                    available_columns,
-                    [
-                        "تقييم_2",
-                        "CES",
-                        "سهولة الاستخدام",
-                    ],
-                )
-            )
-
-            csat_columns = st.multiselect(
-                "أسئلة CSAT",
+            factor_columns = st.multiselect(
+                "أعمدة عوامل CSAT الثمانية",
                 options=available_columns,
-                default=default_csat_columns,
+                default=[],
                 help=(
-                    "يمكن اختيار أكثر من سؤال. "
-                    "سيحسب النظام CSAT لكل سؤال ثم يأخذ المتوسط."
+                    "اختاري الأعمدة الثمانية التي تمثل عوامل تقييم الخدمة. "
+                    "اسم كل عمود سيُستخدم كاسم للعامل، "
+                    "ويُحسب CSAT لكل عامل بشكل مستقل."
                 ),
+            )
+
+            default_ces_columns = find_default_columns(
+                available_columns,
+                [
+                    "CES",
+                    "سهولة الاستخدام",
+                    "الجهد المبذول",
+                ],
             )
 
             ces_columns = st.multiselect(
@@ -472,19 +519,16 @@ if uploaded_file is not None:
             if nps_selection != NO_COLUMN:
                 nps_column = nps_selection
 
-            with st.expander(
-                "طريقة حساب المؤشرات"
-            ):
+            with st.expander("طريقة حساب النتائج"):
                 st.markdown(
                     """
-                    - **CSAT:** نسبة التقييمات 4 و5 من مقياس 1–5.
+                    - **كل عامل CSAT:** نسبة التقييمات 4 و5 من مقياس 1–5.
+                    - **CSAT العام:** متوسط نتائج عوامل CSAT الثمانية، ويُحسب في الداشبورد.
                     - **CES:** نسبة الإجابات السهلة 4–5 ناقص نسبة الإجابات الصعبة 1–2.
                     - **NPS:** نسبة الموصين 9–10 ناقص نسبة غير الموصين 0–6.
                     - القيم خارج نطاق السؤال، مثل 99، تُستبعد.
                     """
                 )
-
-        # مؤشرات محسوبة مسبقًا
 
         else:
             st.caption(
@@ -492,30 +536,19 @@ if uploaded_file is not None:
                 "لن يعيد النظام حسابها."
             )
 
-            calculated_col1, calculated_col2, calculated_col3 = (
-                st.columns(3)
+            calculated_factor_columns = st.multiselect(
+                "أعمدة نتائج عوامل CSAT الثمانية",
+                options=available_columns,
+                default=[],
+                help=(
+                    "اختاري أعمدة النتائج النهائية للعوامل الثمانية. "
+                    "اسم كل عمود سيُستخدم كاسم للعامل."
+                ),
             )
 
+            calculated_col1, calculated_col2 = st.columns(2)
+
             with calculated_col1:
-                csat_selection = st.selectbox(
-                    "عمود قيمة CSAT",
-                    options=optional_columns,
-                    index=find_default_index(
-                        optional_columns,
-                        [
-                            "CSAT",
-                            "CSAT الحالي",
-                            "Current CSAT",
-                        ],
-                    ),
-                )
-
-                if csat_selection != NO_COLUMN:
-                    calculated_csat_column = (
-                        csat_selection
-                    )
-
-            with calculated_col2:
                 ces_selection = st.selectbox(
                     "عمود قيمة CES",
                     options=optional_columns,
@@ -530,11 +563,9 @@ if uploaded_file is not None:
                 )
 
                 if ces_selection != NO_COLUMN:
-                    calculated_ces_column = (
-                        ces_selection
-                    )
+                    calculated_ces_column = ces_selection
 
-            with calculated_col3:
+            with calculated_col2:
                 nps_value_selection = st.selectbox(
                     "عمود قيمة NPS",
                     options=optional_columns,
@@ -549,9 +580,7 @@ if uploaded_file is not None:
                 )
 
                 if nps_value_selection != NO_COLUMN:
-                    calculated_nps_column = (
-                        nps_value_selection
-                    )
+                    calculated_nps_column = nps_value_selection
 
             participants_selection = st.selectbox(
                 "عمود عدد المشاركين",
@@ -566,17 +595,16 @@ if uploaded_file is not None:
                     ],
                 ),
                 help=(
-                    "إذا لم يوجد عمود لعدد المشاركين، "
-                    "سيتم حفظ العدد بقيمة صفر."
+                    "إذا لم يوجد العمود، سيعتمد النظام على عدد الصفوف."
                 ),
             )
 
             if participants_selection != NO_COLUMN:
-                participants_column = (
-                    participants_selection
-                )
+                participants_column = participants_selection
 
+    # ==================================================
     # 3. التعليقات
+    # ==================================================
 
     with st.container(border=True):
         st.markdown("## 3. التعليقات")
@@ -602,7 +630,9 @@ if uploaded_file is not None:
             default=default_comment_columns,
         )
 
+    # ==================================================
     # التحقق والحفظ
+    # ==================================================
 
     save_button = st.button(
         "التحقق وحفظ البيانات",
@@ -613,90 +643,74 @@ if uploaded_file is not None:
     if save_button:
         errors = []
 
-        # التحقق من القسم
-
-        if (
-            department_mode
-            == DEPARTMENT_FIXED
-            and not str(
-                fixed_department or ""
-            ).strip()
-        ):
-            errors.append(
-                "يجب كتابة اسم القسم "
-                "الذي يخص جميع صفوف الملف."
-            )
-
-        # التحقق من المؤشرات
-
         if data_mode_label == RAW_DATA_LABEL:
-            repeated_questions = (
-                set(csat_columns)
-                .intersection(ces_columns)
+            if factor_columns and len(factor_columns) != 8:
+                errors.append(
+                    "عند رفع عوامل CSAT يجب اختيار الأعمدة الثمانية كاملة."
+                )
+
+            repeated_factor_ces = set(factor_columns).intersection(
+                ces_columns
             )
 
-            if repeated_questions:
+            if repeated_factor_ces:
                 errors.append(
-                    "لا يمكن استخدام السؤال نفسه "
-                    "ضمن CSAT وCES معًا: "
-                    + "، ".join(
-                        sorted(repeated_questions)
-                    )
+                    "لا يمكن استخدام العمود نفسه كعامل CSAT وسؤال CES: "
+                    + "، ".join(sorted(repeated_factor_ces))
                 )
 
             if (
                 nps_column is not None
                 and (
-                    nps_column in csat_columns
+                    nps_column in factor_columns
                     or nps_column in ces_columns
                 )
             ):
                 errors.append(
-                    "لا يمكن استخدام عمود NPS "
-                    "ضمن أسئلة CSAT أو CES."
+                    "لا يمكن استخدام عمود NPS ضمن عوامل CSAT أو أسئلة CES."
                 )
 
-            has_indicators = bool(
-                csat_columns
+            has_results = bool(
+                factor_columns
                 or ces_columns
                 or nps_column
             )
 
         else:
+            if (
+                calculated_factor_columns
+                and len(calculated_factor_columns) != 8
+            ):
+                errors.append(
+                    "عند رفع نتائج عوامل CSAT يجب اختيار الأعمدة الثمانية كاملة."
+                )
+
             selected_calculated_columns = [
-                column
-                for column in [
-                    calculated_csat_column,
-                    calculated_ces_column,
-                    calculated_nps_column,
-                ]
-                if column is not None
+                *calculated_factor_columns,
+                *[
+                    column
+                    for column in [
+                        calculated_ces_column,
+                        calculated_nps_column,
+                    ]
+                    if column is not None
+                ],
             ]
 
-            if len(
-                selected_calculated_columns
-            ) != len(
+            if len(selected_calculated_columns) != len(
                 set(selected_calculated_columns)
             ):
                 errors.append(
-                    "لا يمكن استخدام العمود نفسه "
-                    "لأكثر من مؤشر."
+                    "لا يمكن استخدام العمود نفسه لأكثر من عامل أو مؤشر."
                 )
 
-            has_indicators = bool(
-                selected_calculated_columns
-            )
+            has_results = bool(selected_calculated_columns)
 
-        if (
-            not has_indicators
-            and not comment_columns
-        ):
+        if not has_results and not comment_columns:
             errors.append(
-                "يجب اختيار مؤشر واحد على الأقل "
+                "يجب اختيار نتائج عوامل أو مؤشر واحد على الأقل "
                 "أو اختيار عمود للتعليقات."
             )
-
-        # عرض الأخطاء
 
         if errors:
             for error_message in errors:
@@ -706,70 +720,60 @@ if uploaded_file is not None:
             try:
                 data_mode = (
                     RAW_DATA
-                    if data_mode_label
-                    == RAW_DATA_LABEL
+                    if data_mode_label == RAW_DATA_LABEL
                     else CALCULATED_DATA
                 )
 
                 with st.spinner(
                     "جاري تجهيز الملف وحفظ البيانات..."
                 ):
-                    prepared_records = (
-                        prepare_uploaded_records(
-                            dataframe=dataframe,
-                            data_mode=data_mode,
-                            service_column=(
-                                service_column
-                            ),
-                            department_column=(
-                                department_column
-                            ),
-                            fixed_department=(
-                                fixed_department
-                            ),
-                            response_id_column=(
-                                response_id_column
-                            ),
-                            date_column=(
-                                date_column
-                            ),
-                            year_column=(
-                                year_column
-                            ),
-                            period_column=(
-                                period_column
-                            ),
-                            fixed_year=(
-                                fixed_year
-                            ),
-                            fixed_period=(
-                                fixed_period
-                            ),
-                            csat_columns=(
-                                csat_columns
-                            ),
-                            ces_columns=(
-                                ces_columns
-                            ),
-                            nps_column=(
-                                nps_column
-                            ),
-                            calculated_csat_column=(
-                                calculated_csat_column
-                            ),
-                            calculated_ces_column=(
-                                calculated_ces_column
-                            ),
-                            calculated_nps_column=(
-                                calculated_nps_column
-                            ),
-                            participants_column=(
-                                participants_column
-                            ),
-                            comment_columns=(
-                                comment_columns
-                            ),
+                    processing_dataframe = dataframe.copy()
+
+                    if time_mode == TIME_FROM_COMBINED:
+                        parsed_values = (
+                            processing_dataframe[
+                                combined_time_column
+                            ]
+                            .apply(parse_year_period)
                         )
+
+                        processing_dataframe[
+                            "__upload_year__"
+                        ] = parsed_values.apply(
+                            lambda item: item[0]
+                        )
+
+                        processing_dataframe[
+                            "__upload_period__"
+                        ] = parsed_values.apply(
+                            lambda item: item[1]
+                        )
+
+                        year_column = "__upload_year__"
+                        period_column = "__upload_period__"
+
+                    prepared_records = prepare_uploaded_records(
+                        dataframe=processing_dataframe,
+                        data_mode=data_mode,
+                        service_column=service_column,
+                        section_column=section_column,
+                        fixed_section=fixed_section,
+                        response_id_column=response_id_column,
+                        date_column=date_column,
+                        year_column=year_column,
+                        period_column=period_column,
+                        fixed_year=fixed_year,
+                        fixed_period=fixed_period,
+                        factor_columns=factor_columns,
+                        ces_columns=ces_columns,
+                        nps_column=nps_column,
+                        calculated_factor_columns=(
+                            calculated_factor_columns
+                        ),
+                        calculated_ces_column=calculated_ces_column,
+                        calculated_nps_column=calculated_nps_column,
+                        participants_column=participants_column,
+                        comment_columns=comment_columns,
                     )
 
                     result = save_uploaded_records(
@@ -780,21 +784,30 @@ if uploaded_file is not None:
                     st.success(
                         "تم حفظ البيانات في قاعدة البيانات بنجاح. "
                         f"السجلات الجديدة: "
-                        f"{result['inserted_records']}، "
+                        f"{result.get('inserted_records', 0)}، "
                         f"السجلات المحدثة: "
-                        f"{result['updated_records']}، "
+                        f"{result.get('updated_records', 0)}، "
+                        f"نتائج العوامل المحفوظة: "
+                        f"{result.get('saved_factors', 0)}، "
                         f"نتائج المؤشرات المحفوظة: "
-                        f"{result['saved_indicators']}."
+                        f"{result.get('saved_indicators', 0)}."
                     )
 
                 else:
-                    for error_message in result[
-                        "errors"
-                    ]:
+                    for error_message in result.get("errors", []):
                         st.error(error_message)
 
             except ValueError as error:
                 st.error(str(error))
+
+            except TypeError as error:
+                st.error(
+                    "توقيع دالة تجهيز البيانات لا يطابق الصفحة الجديدة. "
+                    "يجب تعديل data_service.py ليستقبل "
+                    "section_column وfactor_columns و"
+                    "calculated_factor_columns. "
+                    f"التفاصيل: {error}"
+                )
 
             except Exception as error:
                 st.error(
