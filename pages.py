@@ -292,7 +292,43 @@ def setup():
 # تعريف الصفحات
 # ==================================================
 
+<<<<<<< Updated upstream
 import app_mode
+=======
+pages = [
+    st.Page(
+        "Dashboard.py",
+        title="لوحة المعلومات",
+        icon=":material/dashboard:",
+        default=True,
+    ),
+    st.Page(
+        "data_entry.py",
+        title="إدخال بيانات المؤشرات",
+        icon=":material/add:",
+    ),
+    st.Page(
+        "data_upload.py",
+        title="رفع ملف Excel",
+        icon=":material/upload_file:",
+    ),
+    st.Page(
+        "comments_page.py",
+        title="تحليل تعليقات العملاء",
+        icon=":material/chat_bubble_outline:",
+    ),
+    st.Page(
+        "reports_page.py",
+        title="التقارير",
+        icon=":material/description:",
+    ),
+    st.Page(
+        "management_page.py",
+        title="التعديل",
+        icon=":material/edit:",
+    ),
+]
+>>>>>>> Stashed changes
 
 
 def _sidebar_mode_toggle():
