@@ -234,13 +234,8 @@ def setup():
             display: none !important;
         }
 
-        [data-testid="stSidebarCollapseButton"] button {
-            color: #FFFFFF !important;
-        }
-
-        [data-testid="stSidebarCollapseButton"] svg {
-            color: #FFFFFF !important;
-            fill: #FFFFFF !important;
+        [data-testid="stSidebarCollapseButton"] {
+            display: none !important;
         }
 
         span[data-testid="stIconMaterial"],
