@@ -46,281 +46,320 @@ LOGO_PATH = prepare_logo()
 
 
 # ==================================================
-# إعدادات التطبيق
+# إعداد الصفحة والشعار والتصميم — يُستدعى في كل تشغيل
+# (must run on EVERY rerun, not just first import, or the
+#  sidebar styling disappears after navigating to a page)
 # ==================================================
+def setup():
+    # ==================================================
+    # إعدادات التطبيق
+    # ==================================================
 
-st.set_page_config(
-    page_title="منصة تجربة العميل",
-    page_icon=str(LOGO_PATH),
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-
-# ==================================================
-# الشعار أعلى السايدبار
-# ==================================================
-
-st.logo(
-    str(LOGO_PATH),
-    size="large",
-)
+    st.set_page_config(
+        page_title="منصة تجربة العميل",
+        page_icon=str(LOGO_PATH),
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
 
-# ==================================================
-# تصميم التطبيق والسايدبار
-# ==================================================
+    # ==================================================
+    # الشعار أعلى السايدبار
+    # ==================================================
 
-st.markdown(
-    """
-    <style>
-    @import url(
-        'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap'
-    );
+    st.logo(
+        str(LOGO_PATH),
+        size="large",
+    )
 
-    html,
-    body {
-        direction: rtl;
-    }
 
-    [data-testid="stAppViewContainer"] {
-        background-color: #F5F6FA;
-        direction: rtl;
-        flex-direction: row !important;
-    }
+    # ==================================================
+    # تصميم التطبيق والسايدبار
+    # ==================================================
 
-    /* محتوى الصفحات */
-    [data-testid="stMain"] {
-        direction: rtl;
-        text-align: right;
-    }
+    st.markdown(
+        """
+        <style>
+        @import url(
+            'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap'
+        );
 
-    [data-testid="stMainBlockContainer"] {
-        direction: rtl;
-        text-align: right;
-        padding-top: 3rem;
-        padding-right: 3rem;
-        padding-left: 3rem;
-    }
+        html,
+        body {
+            direction: rtl;
+        }
 
-    [data-testid="stMain"] p,
-    [data-testid="stMain"] h1,
-    [data-testid="stMain"] h2,
-    [data-testid="stMain"] h3,
-    [data-testid="stMain"] label,
-    [data-testid="stMain"] button,
-    [data-testid="stMain"] input,
-    [data-testid="stMain"] textarea {
-        font-family: "Tajawal", sans-serif !important;
-    }
+        [data-testid="stAppViewContainer"] {
+            background-color: #F5F6FA;
+            direction: rtl;
+            flex-direction: row !important;
+        }
 
-    /* =========================
-       السايدبار
-    ========================= */
+        /* محتوى الصفحات */
+        [data-testid="stMain"] {
+            direction: rtl;
+            text-align: right;
+        }
 
-    section[data-testid="stSidebar"] {
-        background-color: #16213E !important;
-        width: 320px !important;
-        min-width: 320px !important;
-        border-left: 1px solid rgba(255, 255, 255, 0.08);
-        border-right: none !important;
-    }
+        [data-testid="stMainBlockContainer"] {
+            direction: rtl;
+            text-align: right;
+            padding-top: 3rem;
+            padding-right: 3rem;
+            padding-left: 3rem;
+        }
 
-    section[data-testid="stSidebar"] > div {
-        background-color: #16213E !important;
-        direction: rtl !important;
-        text-align: right !important;
-    }
+        [data-testid="stMain"] p,
+        [data-testid="stMain"] h1,
+        [data-testid="stMain"] h2,
+        [data-testid="stMain"] h3,
+        [data-testid="stMain"] label,
+        [data-testid="stMain"] button,
+        [data-testid="stMain"] input,
+        [data-testid="stMain"] textarea {
+            font-family: "Tajawal", sans-serif !important;
+        }
 
-    [data-testid="stSidebarContent"] {
-        direction: rtl !important;
-        padding: 18px 18px !important;
-    }
+        /* =========================
+           السايدبار
+        ========================= */
 
-    /* =========================
-       الشعار (تم التعديل هنا)
-    ========================= */
+        section[data-testid="stSidebar"] {
+            background-color: #16213E !important;
+            width: 320px !important;
+            min-width: 320px !important;
+            border-left: 1px solid rgba(255, 255, 255, 0.08);
+            border-right: none !important;
+        }
 
-    section[data-testid="stSidebar"] [data-testid="stLogo"] {
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        width: 100% !important;
-        margin: 10px auto 20px auto !important;
-        padding: 0 !important;
-    }
+        section[data-testid="stSidebar"] > div {
+            background-color: #16213E !important;
+            direction: rtl !important;
+            text-align: right !important;
+        }
 
-    section[data-testid="stSidebar"] [data-testid="stLogo"] img {
-        width: 100% !important;
-        max-width: 280px !important;
-        height: auto !important;
-        max-height: 200px !important;
-        object-fit: contain !important;
-    }
+        [data-testid="stSidebarContent"] {
+            direction: rtl !important;
+            padding: 18px 18px !important;
+        }
 
-    /* =========================
-       قائمة الصفحات
-    ========================= */
+        /* =========================
+           الشعار (تم التعديل هنا)
+        ========================= */
 
-    [data-testid="stSidebarNav"] {
-        direction: rtl !important;
-        padding-top: 5px !important;
-    }
+        section[data-testid="stSidebar"] [data-testid="stLogo"] {
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            width: 100% !important;
+            margin: 10px auto 20px auto !important;
+            padding: 0 !important;
+        }
 
-    [data-testid="stSidebarNav"] ul {
-        gap: 8px !important;
-    }
+        section[data-testid="stSidebar"] [data-testid="stLogo"] img {
+            width: 100% !important;
+            max-width: 280px !important;
+            height: auto !important;
+            max-height: 200px !important;
+            object-fit: contain !important;
+        }
 
-    [data-testid="stSidebarNav"] li {
-        direction: rtl !important;
-    }
+        /* =========================
+           قائمة الصفحات
+        ========================= */
 
-    [data-testid="stSidebarNav"] a {
-        min-height: 62px !important;
-        padding: 14px 18px !important;
-        margin-bottom: 6px !important;
+        [data-testid="stSidebarNav"] {
+            direction: rtl !important;
+            padding-top: 5px !important;
+        }
 
-        border-radius: 13px !important;
-        background-color: transparent !important;
+        [data-testid="stSidebarNav"] ul {
+            gap: 8px !important;
+        }
 
-        direction: rtl !important;
-        text-align: right !important;
+        [data-testid="stSidebarNav"] li {
+            direction: rtl !important;
+        }
 
-        color: #FFFFFF !important;
-        text-decoration: none !important;
+        [data-testid="stSidebarNav"] a {
+            min-height: 62px !important;
+            padding: 14px 18px !important;
+            margin-bottom: 6px !important;
 
-        transition: background-color 0.2s ease !important;
-    }
+            border-radius: 13px !important;
+            background-color: transparent !important;
 
-    /* ترتيب الأيقونة والنص */
-    [data-testid="stSidebarNav"] a > div {
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: flex-start !important;
-        align-items: center !important;
+            direction: rtl !important;
+            text-align: right !important;
 
-        width: 100% !important;
-        gap: 12px !important;
-        direction: rtl !important;
-    }
+            color: #FFFFFF !important;
+            text-decoration: none !important;
 
-    /* نصوص القائمة */
-    [data-testid="stSidebarNav"] a p {
-        margin: 0 !important;
+            transition: background-color 0.2s ease !important;
+        }
 
-        color: #FFFFFF !important;
-        font-family: "Tajawal", sans-serif !important;
-        font-size: 16px !important;
-        font-weight: 700 !important;
+        /* ترتيب الأيقونة والنص */
+        [data-testid="stSidebarNav"] a > div {
+            display: flex !important;
+            flex-direction: row !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
 
-        line-height: 1.5 !important;
-        text-align: right !important;
-    }
+            width: 100% !important;
+            gap: 12px !important;
+            direction: rtl !important;
+        }
 
-    /* أيقونات القائمة */
-    [data-testid="stSidebarNav"] span[data-testid="stIconMaterial"] {
-        font-family: "Material Symbols Rounded" !important;
-        font-size: 22px !important;
-        font-weight: normal !important;
-        font-style: normal !important;
+        /* نصوص القائمة */
+        [data-testid="stSidebarNav"] a p {
+            margin: 0 !important;
 
-        color: #FFFFFF !important;
-        direction: ltr !important;
-        text-align: center !important;
+            color: #FFFFFF !important;
+            font-family: "Tajawal", sans-serif !important;
+            font-size: 16px !important;
+            font-weight: 700 !important;
 
-        flex-shrink: 0 !important;
-    }
+            line-height: 1.5 !important;
+            text-align: right !important;
+        }
 
-    /* الصفحة المحددة */
-    [data-testid="stSidebarNav"] a[aria-current="page"] {
-        background-color: #6C4AB6 !important;
-        color: #FFFFFF !important;
-    }
+        /* أيقونات القائمة */
+        [data-testid="stSidebarNav"] span[data-testid="stIconMaterial"] {
+            font-family: "Material Symbols Rounded" !important;
+            font-size: 22px !important;
+            font-weight: normal !important;
+            font-style: normal !important;
 
-    [data-testid="stSidebarNav"] a[aria-current="page"] p,
-    [data-testid="stSidebarNav"] a[aria-current="page"] span {
-        color: #FFFFFF !important;
-    }
+            color: #FFFFFF !important;
+            direction: ltr !important;
+            text-align: center !important;
 
-    /* عند تمرير الماوس */
-    [data-testid="stSidebarNav"] a:hover {
-        background-color: #22335C !important;
-        color: #FFFFFF !important;
-    }
+            flex-shrink: 0 !important;
+        }
 
-    [data-testid="stSidebarNavSeparator"] {
-        display: none !important;
-    }
+        /* الصفحة المحددة */
+        [data-testid="stSidebarNav"] a[aria-current="page"] {
+            background-color: #6C4AB6 !important;
+            color: #FFFFFF !important;
+        }
 
-    /* زر تصغير السايدبار */
-    [data-testid="stSidebarCollapseButton"] button {
-        color: #FFFFFF !important;
-    }
+        [data-testid="stSidebarNav"] a[aria-current="page"] p,
+        [data-testid="stSidebarNav"] a[aria-current="page"] span {
+            color: #FFFFFF !important;
+        }
 
-    [data-testid="stSidebarCollapseButton"] svg {
-        color: #FFFFFF !important;
-        fill: #FFFFFF !important;
-    }
+        /* عند تمرير الماوس */
+        [data-testid="stSidebarNav"] a:hover {
+            background-color: #22335C !important;
+            color: #FFFFFF !important;
+        }
 
-    /* المحافظة على خط الأيقونات */
-    span[data-testid="stIconMaterial"],
-    .material-symbols-rounded {
-        font-family: "Material Symbols Rounded" !important;
-    }
+        [data-testid="stSidebarNavSeparator"] {
+            display: none !important;
+        }
 
-    header[data-testid="stHeader"] {
-        background-color: transparent;
-    }
+        /* زر تصغير السايدبار */
+        [data-testid="stSidebarCollapseButton"] button {
+            color: #FFFFFF !important;
+        }
 
-    footer {
-        visibility: hidden;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+        [data-testid="stSidebarCollapseButton"] svg {
+            color: #FFFFFF !important;
+            fill: #FFFFFF !important;
+        }
+
+        /* المحافظة على خط الأيقونات */
+        span[data-testid="stIconMaterial"],
+        .material-symbols-rounded {
+            font-family: "Material Symbols Rounded" !important;
+        }
+
+        header[data-testid="stHeader"] {
+            background-color: transparent;
+        }
+
+        footer {
+            visibility: hidden;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 
 # ==================================================
 # تعريف الصفحات
 # ==================================================
 
-pages = [
-    st.Page(
-        "Dashboard.py",
-        title="لوحة المعلومات",
-        icon=":material/dashboard:",
-        default=True,
-    ),
-    st.Page(
-        "data_entry.py",
-        title="إدخال بيانات المؤشرات",
-        icon=":material/add:",
-    ),
-    st.Page(
-        "data_upload.py",
-        title="رفع ملف Excel",
-        icon=":material/upload_file:",
-    ),
-    st.Page(
-        "comments_page.py",
-        title="تحليل تعليقات العملاء",
-        icon=":material/chat_bubble_outline:",
-    ),
-    st.Page(
-        "reports_page.py",
-        title="التقارير",
-        icon=":material/description:",
-    ),
-]
+import app_mode
 
 
-# تشغيل التنقل
+def _sidebar_mode_toggle():
+    """
+    The mode switch, placed INSIDE the sidebar, after all the sidebar CSS
+    and st.logo have run. Rendering it here (not in main.py's main area)
+    keeps the original render order, which is what keeps the sidebar stable.
+    OFF = جهات, ON = أفراد.
+    """
+    with st.sidebar:
+        is_individuals = st.toggle(
+            "وضع الأفراد",
+            value=app_mode.is_individuals(),
+            key="mode_switch",
+        )
+    new_mode = "individuals" if is_individuals else "departments"
+    if new_mode != app_mode.get_mode():
+        app_mode.set_mode(new_mode)
+        st.rerun()
 
-page = st.navigation(
-    pages,
-    position="sidebar",
-    expanded=True,
-)
 
-page.run()
+# The page list, kept EXACTLY as the original. Both modes use the same
+# files for now; give "individuals" its own list here when its pages exist.
+def _pages_for(mode):
+    return [
+        st.Page(
+            "Dashboard.py",
+            title="لوحة المعلومات",
+            icon=":material/dashboard:",
+            default=True,
+        ),
+        st.Page(
+            "data_entry.py",
+            title="إدخال بيانات المؤشرات",
+            icon=":material/add:",
+        ),
+        st.Page(
+            "data_upload.py",
+            title="رفع ملف Excel",
+            icon=":material/upload_file:",
+        ),
+        st.Page(
+            "comments_page.py",
+            title="تحليل تعليقات العملاء",
+            icon=":material/chat_bubble_outline:",
+        ),
+        st.Page(
+            "reports_page.py",
+            title="التقارير",
+            icon=":material/description:",
+        ),
+    ]
+
+
+def run_app():
+    """Draw the sidebar toggle, then run navigation -- original flow."""
+    setup()
+
+    _sidebar_mode_toggle()
+
+    mode = app_mode.get_mode() or "departments"
+
+    # تشغيل التنقل  (identical to the original)
+    page = st.navigation(
+        _pages_for(mode),
+        position="sidebar",
+        expanded=True,
+    )
+
+    page.run()
