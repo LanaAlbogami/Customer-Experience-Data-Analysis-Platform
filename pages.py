@@ -398,15 +398,4 @@ def run_app():
         expanded=True,
     )
 
-    if page.title != "التعديل":
-        st.session_state["authenticated_management"] = False
-
-    if page.title == "التعديل":
-        if not st.session_state.get("authenticated_management", False):
-            password_dialog()
-            st.stop()
-
     page.run()
-
-
-run_app()
