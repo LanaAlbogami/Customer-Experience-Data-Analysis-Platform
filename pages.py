@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import streamlit as st
 from PIL import Image
 
@@ -17,6 +18,7 @@ def prepare_logo():
         return original_logo
 
     try:
+        # إعادة قص الشعار فقط إذا تغيرت الصورة الأصلية
         should_crop = (
             not cropped_logo.exists()
             or original_logo.stat().st_mtime
@@ -58,6 +60,7 @@ LOGO_PATH = prepare_logo()
 # ==================================================
 
 def setup():
+    # إعدادات التطبيق
     st.set_page_config(
         page_title="منصة تجربة العميل",
         page_icon=str(LOGO_PATH),
@@ -65,12 +68,14 @@ def setup():
         initial_sidebar_state="expanded",
     )
 
+    # الشعار أعلى القائمة الجانبية
     if LOGO_PATH.exists():
         st.logo(
             str(LOGO_PATH),
             size="large",
         )
 
+    # تصميم التطبيق والقائمة الجانبية
     st.markdown(
         """
         <style>
@@ -89,6 +94,7 @@ def setup():
             flex-direction: row !important;
         }
 
+        /* محتوى الصفحات */
         [data-testid="stMain"] {
             direction: rtl;
             text-align: right;
@@ -113,6 +119,10 @@ def setup():
             font-family: "Tajawal", sans-serif !important;
         }
 
+        /* =========================
+           القائمة الجانبية
+        ========================= */
+
         section[data-testid="stSidebar"] {
             background-color: #16213E !important;
             width: 320px !important;
@@ -132,6 +142,10 @@ def setup():
             padding: 18px 18px !important;
         }
 
+        /* =========================
+           الشعار
+        ========================= */
+
         section[data-testid="stSidebar"] [data-testid="stLogo"] {
             display: flex !important;
             justify-content: center !important;
@@ -148,6 +162,10 @@ def setup():
             max-height: 200px !important;
             object-fit: contain !important;
         }
+
+        /* =========================
+           قائمة الصفحات
+        ========================= */
 
         [data-testid="stSidebarNav"] {
             direction: rtl !important;
@@ -179,6 +197,7 @@ def setup():
             transition: background-color 0.2s ease !important;
         }
 
+        /* ترتيب الأيقونة والنص */
         [data-testid="stSidebarNav"] a > div {
             display: flex !important;
             flex-direction: row !important;
@@ -190,6 +209,7 @@ def setup():
             direction: rtl !important;
         }
 
+        /* نصوص القائمة */
         [data-testid="stSidebarNav"] a p {
             margin: 0 !important;
 
@@ -202,6 +222,7 @@ def setup():
             text-align: right !important;
         }
 
+        /* أيقونات القائمة */
         [data-testid="stSidebarNav"] span[data-testid="stIconMaterial"] {
             font-family: "Material Symbols Rounded" !important;
             font-size: 22px !important;
@@ -215,6 +236,7 @@ def setup():
             flex-shrink: 0 !important;
         }
 
+        /* الصفحة المحددة */
         [data-testid="stSidebarNav"] a[aria-current="page"] {
             background-color: #6C4AB6 !important;
             color: #FFFFFF !important;
@@ -225,6 +247,7 @@ def setup():
             color: #FFFFFF !important;
         }
 
+        /* عند تمرير الماوس */
         [data-testid="stSidebarNav"] a:hover {
             background-color: #22335C !important;
             color: #FFFFFF !important;
@@ -234,10 +257,17 @@ def setup():
             display: none !important;
         }
 
-        [data-testid="stSidebarCollapseButton"] {
-            display: none !important;
+        /* زر تصغير القائمة الجانبية */
+        [data-testid="stSidebarCollapseButton"] button {
+            color: #FFFFFF !important;
         }
 
+        [data-testid="stSidebarCollapseButton"] svg {
+            color: #FFFFFF !important;
+            fill: #FFFFFF !important;
+        }
+
+        /* المحافظة على خط الأيقونات */
         span[data-testid="stIconMaterial"],
         .material-symbols-rounded {
             font-family: "Material Symbols Rounded" !important;
@@ -250,41 +280,22 @@ def setup():
         footer {
             visibility: hidden;
         }
-
-        div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
-            text-align: right !important;
-            direction: rtl !important;
-        }
-
-        /* إخفاء أيقونة المتصفح التلقائية التي تظهر على اليمين */
-        div[data-testid="stDialog"] input::-webkit-contacts-auto-fill-button,
-        div[data-testid="stDialog"] input::-webkit-credentials-auto-fill-button {
-            visibility: hidden !important;
-            display: none !important;
-            pointer-events: none !important;
-            position: absolute !important;
-            right: 0 !important;
-        }
-
-        /* تنسيق الأزرار لتكون بيضاء بنفس لون الصندوق */
-        div[data-testid="stDialog"] button:not([kind="header"]):not([data-testid="baseButton-header"]) {
-            background-color: #FFFFFF !important;
-            color: #333333 !important;
-            border: 1px solid rgba(49, 51, 63, 0.2) !important;
-        }
-        
-        div[data-testid="stDialog"] button:not([kind="header"]):not([data-testid="baseButton-header"]):hover {
-            background-color: #F0F2F6 !important;
-            color: #000000 !important;
-            border-color: rgba(49, 51, 63, 0.4) !important;
-        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
+# ==================================================
+# زر التبديل بين الجهات والأفراد
+# ==================================================
+
 def _sidebar_mode_toggle():
+    """
+    OFF = الجهات
+    ON = الأفراد
+    """
+
     with st.sidebar:
         is_individuals = st.toggle(
             "وضع الأفراد",
@@ -301,39 +312,6 @@ def _sidebar_mode_toggle():
     if new_mode != app_mode.get_mode():
         app_mode.set_mode(new_mode)
         st.rerun()
-
-
-# ==================================================
-# نافذة كلمة المرور لحماية صفحة التعديل
-# ==================================================
-CORRECT_PASSWORD = "123"  # كلمة السر
-
-@st.dialog("تسجيل الدخول لصفحة التعديل")
-def password_dialog():
-    st.markdown('<div style="text-align: right; direction: rtl; margin-bottom: 10px;">الرجاء إدخال كلمة السر للوصول إلى صفحة التعديل:</div>', unsafe_allow_html=True)
-    
-    # إضافة خصائص لمنع المتصفح من إظهار أدواته الإضافية على اليمين
-    password_input = st.text_input(
-        "كلمة السر", 
-        type="password", 
-        label_visibility="collapsed", 
-        placeholder="أدخل كلمة السر هنا...",
-        help=None
-    )
-    
-    col1, col2 = st.columns(2)
-    
-    if col1.button("دخول", key="submit_pwd", use_container_width=True):
-        if password_input == CORRECT_PASSWORD:
-            st.session_state["authenticated_management"] = True
-            st.success("تم تسجيل الدخول بنجاح!")
-            st.rerun()
-        else:
-            st.error("كلمة السر غير صحيحة، حاول مرة أخرى.")
-            
-    if col2.button("إلغاء", key="cancel_pwd", use_container_width=True):
-        st.session_state["authenticated_management"] = False
-        st.switch_page("Dashboard.py")
 
 
 # ==================================================
@@ -380,44 +358,8 @@ def _pages_for(mode):
 # تشغيل التطبيق
 # ==================================================
 
-<<<<<<< Updated upstream
 def run_app():
     setup()
-=======
-pages = [
-    st.Page(
-        "Dashboard.py",
-        title="لوحة المعلومات",
-        icon=":material/dashboard:",
-        default=True,
-    ),
-    st.Page(
-        "data_entry.py",
-        title="إدخال بيانات المؤشرات",
-        icon=":material/add:",
-    ),
-    st.Page(
-        "data_upload.py",
-        title="رفع ملف Excel",
-        icon=":material/upload_file:",
-    ),
-    st.Page(
-        "comments_page.py",
-        title="تحليل تعليقات العملاء",
-        icon=":material/chat_bubble_outline:",
-    ),
-    st.Page(
-        "reports_page.py",
-        title="التقارير",
-        icon=":material/description:",
-    ),
-    st.Page(
-        "management_page.py",
-        title="التعديل",
-        icon=":material/edit:",
-    ),
-]
->>>>>>> Stashed changes
 
     _sidebar_mode_toggle()
 
@@ -430,3 +372,6 @@ pages = [
     )
 
     page.run()
+
+
+run_app()
