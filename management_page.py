@@ -184,7 +184,7 @@ if st.session_state['page'] == 'departments':
                     
                     b_col1, b_col2, b_col3 = st.columns(3)
                     
-                    if b_col1.button("👁️ عرض", key=f"view_{row['id']}", use_container_width=True):
+                    if b_col1.button(" عرض", key=f"view_{row['id']}", use_container_width=True):
                         for key in list(st.session_state.keys()):
                             if key.startswith('deleting_') or key.startswith('editing_'):
                                 st.session_state[key] = False
@@ -193,12 +193,12 @@ if st.session_state['page'] == 'departments':
                         st.session_state['page'] = 'services'
                         st.rerun()
                     
-                    if b_col2.button("✏️ تعديل", key=f"edit_d_{row['id']}", use_container_width=True):
+                    if b_col2.button(" تعديل", key=f"edit_d_{row['id']}", use_container_width=True):
                         st.session_state[f'editing_dept_{row["id"]}'] = True
                         st.session_state[f'deleting_dept_{row["id"]}'] = False
                         st.rerun()
                     
-                    if b_col3.button("🗑️ حذف", key=f"del_d_{row['id']}", use_container_width=True):
+                    if b_col3.button(" حذف", key=f"del_d_{row['id']}", use_container_width=True):
                         st.session_state[f'deleting_dept_{row["id"]}'] = True
                         st.session_state[f'editing_dept_{row["id"]}'] = False
                         st.rerun()
@@ -264,12 +264,12 @@ elif st.session_state['page'] == 'services':
                     
                     s_col1, s_col2 = st.columns(2)
                     
-                    if s_col1.button("✏️ تعديل", key=f"edit_s_{row['id']}", use_container_width=True):
+                    if s_col1.button(" تعديل", key=f"edit_s_{row['id']}", use_container_width=True):
                         st.session_state[f'editing_serv_{row["id"]}'] = True
                         st.session_state[f'deleting_serv_{row["id"]}'] = False
                         st.rerun()
                     
-                    if s_col2.button("🗑️ حذف", key=f"del_s_{row['id']}", use_container_width=True):
+                    if s_col2.button(" حذف", key=f"del_s_{row['id']}", use_container_width=True):
                         st.session_state[f'deleting_serv_{row["id"]}'] = True
                         st.session_state[f'editing_serv_{row["id"]}'] = False
                         st.rerun()
