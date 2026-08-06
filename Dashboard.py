@@ -141,8 +141,7 @@ div[data-testid="stCheckbox"] label p {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("لوحة المعلومات")
-st.caption("نظرة عامة على أداء مؤشرات تجربة العميل")
+st.title("لوحة مؤشرات تجربة العميل")
 
 from data_service import fetch_records_from_db
 
