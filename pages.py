@@ -1,6 +1,9 @@
 from pathlib import Path
+
 import streamlit as st
 from PIL import Image
+
+import app_mode
 
 
 # ==================================================
@@ -15,7 +18,7 @@ def prepare_logo():
         return original_logo
 
     try:
-        # إعادة القص فقط إذا تغيرت الصورة الأصلية
+        # إعادة قص الشعار فقط إذا تغيرت الصورة الأصلية
         should_crop = (
             not cropped_logo.exists()
             or original_logo.stat().st_mtime
@@ -23,17 +26,24 @@ def prepare_logo():
         )
 
         if should_crop:
-            with Image.open(original_logo).convert("RGBA") as image:
-              alpha = image.getchannel("A")
+            with Image.open(original_logo) as original_image:
+                image = original_image.convert("RGBA")
 
-            threshold = 20
-            mask = alpha.point(lambda a: 255 if a > threshold else 0)
-            bounding_box = mask.getbbox()
+                alpha = image.getchannel("A")
 
-            if bounding_box:
+                threshold = 20
+                mask = alpha.point(
+                    lambda alpha_value: 255
+                    if alpha_value > threshold
+                    else 0
+                )
+
+                bounding_box = mask.getbbox()
+
+                if bounding_box:
                     cropped_image = image.crop(bounding_box)
                     cropped_image.save(cropped_logo)
-            else:
+                else:
                     image.save(cropped_logo)
 
         return cropped_logo
@@ -46,15 +56,11 @@ LOGO_PATH = prepare_logo()
 
 
 # ==================================================
-# إعداد الصفحة والشعار والتصميم — يُستدعى في كل تشغيل
-# (must run on EVERY rerun, not just first import, or the
-#  sidebar styling disappears after navigating to a page)
+# إعداد الصفحة والشعار والتصميم
 # ==================================================
-def setup():
-    # ==================================================
-    # إعدادات التطبيق
-    # ==================================================
 
+def setup():
+    # إعدادات التطبيق
     st.set_page_config(
         page_title="منصة تجربة العميل",
         page_icon=str(LOGO_PATH),
@@ -62,21 +68,14 @@ def setup():
         initial_sidebar_state="expanded",
     )
 
+    # الشعار أعلى القائمة الجانبية
+    if LOGO_PATH.exists():
+        st.logo(
+            str(LOGO_PATH),
+            size="large",
+        )
 
-    # ==================================================
-    # الشعار أعلى السايدبار
-    # ==================================================
-
-    st.logo(
-        str(LOGO_PATH),
-        size="large",
-    )
-
-
-    # ==================================================
-    # تصميم التطبيق والسايدبار
-    # ==================================================
-
+    # تصميم التطبيق والقائمة الجانبية
     st.markdown(
         """
         <style>
@@ -121,7 +120,7 @@ def setup():
         }
 
         /* =========================
-           السايدبار
+           القائمة الجانبية
         ========================= */
 
         section[data-testid="stSidebar"] {
@@ -144,7 +143,7 @@ def setup():
         }
 
         /* =========================
-           الشعار (تم التعديل هنا)
+           الشعار
         ========================= */
 
         section[data-testid="stSidebar"] [data-testid="stLogo"] {
@@ -258,7 +257,7 @@ def setup():
             display: none !important;
         }
 
-        /* زر تصغير السايدبار */
+        /* زر تصغير القائمة الجانبية */
         [data-testid="stSidebarCollapseButton"] button {
             color: #FFFFFF !important;
         }
@@ -287,71 +286,38 @@ def setup():
     )
 
 
-
 # ==================================================
-# تعريف الصفحات
+# زر التبديل بين الجهات والأفراد
 # ==================================================
-
-<<<<<<< Updated upstream
-import app_mode
-=======
-pages = [
-    st.Page(
-        "Dashboard.py",
-        title="لوحة المعلومات",
-        icon=":material/dashboard:",
-        default=True,
-    ),
-    st.Page(
-        "data_entry.py",
-        title="إدخال بيانات المؤشرات",
-        icon=":material/add:",
-    ),
-    st.Page(
-        "data_upload.py",
-        title="رفع ملف Excel",
-        icon=":material/upload_file:",
-    ),
-    st.Page(
-        "comments_page.py",
-        title="تحليل تعليقات العملاء",
-        icon=":material/chat_bubble_outline:",
-    ),
-    st.Page(
-        "reports_page.py",
-        title="التقارير",
-        icon=":material/description:",
-    ),
-    st.Page(
-        "management_page.py",
-        title="التعديل",
-        icon=":material/edit:",
-    ),
-]
->>>>>>> Stashed changes
-
 
 def _sidebar_mode_toggle():
     """
-    The mode switch, placed INSIDE the sidebar, after all the sidebar CSS
-    and st.logo have run. Rendering it here (not in main.py's main area)
-    keeps the original render order, which is what keeps the sidebar stable.
-    OFF = جهات, ON = أفراد.
+    OFF = الجهات
+    ON = الأفراد
     """
+
     with st.sidebar:
         is_individuals = st.toggle(
             "وضع الأفراد",
             value=app_mode.is_individuals(),
             key="mode_switch",
         )
-    new_mode = "individuals" if is_individuals else "departments"
+
+    new_mode = (
+        "individuals"
+        if is_individuals
+        else "departments"
+    )
+
     if new_mode != app_mode.get_mode():
         app_mode.set_mode(new_mode)
         st.rerun()
 
 
-# The page list, kept EXACTLY as the original. Both modes use the same
-# files for now; give "individuals" its own list here when its pages exist.
+# ==================================================
+# تعريف صفحات التطبيق
+# ==================================================
+
 def _pages_for(mode):
     return [
         st.Page(
@@ -380,18 +346,25 @@ def _pages_for(mode):
             title="التقارير",
             icon=":material/description:",
         ),
+        st.Page(
+            "management_page.py",
+            title="التعديل",
+            icon=":material/edit:",
+        ),
     ]
 
 
+# ==================================================
+# تشغيل التطبيق
+# ==================================================
+
 def run_app():
-    """Draw the sidebar toggle, then run navigation -- original flow."""
     setup()
 
     _sidebar_mode_toggle()
 
     mode = app_mode.get_mode() or "departments"
 
-    # تشغيل التنقل  (identical to the original)
     page = st.navigation(
         _pages_for(mode),
         position="sidebar",
@@ -399,3 +372,6 @@ def run_app():
     )
 
     page.run()
+
+
+run_app()
