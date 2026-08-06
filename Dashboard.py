@@ -71,6 +71,73 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 }
 .positive { background: #E4F6F1; color: #2FA88E; }
 .negative { background: #FCEBED; color: #C94B5B; }
+
+/* شرائح الفلاتر متعددة الاختيار (multiselect) — تصغير وترتيب */
+div[data-baseweb="select"] > div {
+    direction: rtl;
+}
+span[data-baseweb="tag"] {
+    background-color: #6C4AB6 !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    padding: 2px 6px !important;
+}
+
+/* تضييق القائمة المنسدلة (Popover) للفلاتر عشان ما يبين فراغ زايد */
+div[data-testid="stPopoverBody"] {
+    max-width: 280px;
+    padding: 12px 16px !important;
+}
+
+/* ===== تصميم مخصص لفلاتر "عرض حسب" ===== */
+.filter-label {
+    color: #6B7398;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    text-align: right;
+}
+
+/* البطاقة نفسها (Expander) */
+div[data-testid="stExpander"] {
+    border: 1.5px solid #E7E5F5 !important;
+    border-radius: 12px !important;
+    background: #FFFFFF !important;
+    box-shadow: 0 2px 8px rgba(108, 74, 182, 0.06);
+    overflow: hidden;
+}
+div[data-testid="stExpander"] summary {
+    padding: 10px 16px !important;
+    background: #FBFAFE !important;
+}
+div[data-testid="stExpander"] summary:hover {
+    background: #F1ECFB !important;
+}
+div[data-testid="stExpander"] summary p {
+    font-size: 14px;
+    color: #16213E;
+    font-weight: 700;
+}
+div[data-testid="stExpanderDetails"] {
+    padding: 6px 14px 14px 14px !important;
+}
+
+/* Checkbox كأنها Toggle Pill ملونة */
+div[data-testid="stCheckbox"] {
+    background: #F7F5FC;
+    border-radius: 8px;
+    padding: 6px 10px;
+    margin-bottom: 4px;
+    transition: background 0.15s ease;
+}
+div[data-testid="stCheckbox"]:hover {
+    background: #EFE9FA;
+}
+div[data-testid="stCheckbox"] label p {
+    font-size: 13px;
+    color: #16213E;
+    font-weight: 600;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -85,23 +152,6 @@ if not mock_records:
     st.warning("لا توجد بيانات بعد بقاعدة البيانات")
     st.stop()
 
-# ---- Filters: السنة، الفترة، القطاع، الخدمة ----
-st.subheader("عرض حسب")
-f1, f2, f3, f4 = st.columns(4)
-
-with f1:
-    year = st.selectbox("السنة", sorted({r["year"] for r in mock_records}))
-with f2:
-    period = st.selectbox("الفترة", sorted({r["period"] for r in mock_records}))
-with f3:
-    dept = st.selectbox("القطاع", ["كل القطاعات"] + list({r["department"] for r in mock_records}))
-with f4:
-    if dept == "كل القطاعات":
-        services = {r["service"] for r in mock_records}
-    else:
-        services = {r["service"] for r in mock_records if r["department"] == dept}
-    service = st.selectbox("الخدمة", ["كل الخدمات"] + list(services))
-
 
 def _average_ignoring_none(values):
     """متوسط القيم المتوفرة فقط، أو None لو كلها فاضية."""
@@ -111,81 +161,214 @@ def _average_ignoring_none(values):
     return round(sum(numeric_values) / len(numeric_values), 2)
 
 
-def _build_general_record(records, year, period, dept):
-    """
-    يبني سجل "عام" بمتوسط كل السجلات المطابقة لسنة/فترة/قطاع،
-    يُستخدم لما ما فيه سجل يطابق الفلاتر بالضبط (مثلاً خدمة معينة
-    ما عندها بيانات لهذي الفترة).
-    """
-    matching = [
-        r for r in records
-        if r["year"] == year
-        and r["period"] == period
-        and (dept == "كل القطاعات" or r["department"] == dept)
-    ]
-
-    if not matching:
+def _number_or_none(value):
+    """تحويل القيمة إلى رقم، مع قبول None والقيم الفارغة."""
+    if value is None or value == "":
         return None
 
-    general = {
-        "section": dept if dept != "كل القطاعات" else "عام",
-        "department": dept if dept != "كل القطاعات" else "عام",
-        "service": "عام (متوسط كل الخدمات المتاحة)",
-        "year": year,
-        "period": period,
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _display_table_value(value, kind=None):
+    """تنسيق القيم داخل القوائم والجداول."""
+    number = _number_or_none(value)
+
+    if number is None:
+        return "—"
+
+    if kind == "percent":
+        return f"{number:g}%"
+
+    return f"{number:g}"
+
+
+# قيم مستهدفة افتراضية تُستخدم لما ما يكون فيه Target محفوظ فعليًا بالسجل
+DEFAULT_TARGETS = {"csat": 85, "ces": 69, "nps": 76}
+
+
+def _target_or_default(code, value):
+    """يرجع قيمة الهدف الفعلية، أو الافتراضية لو مافيه قيمة محفوظة."""
+    number = _number_or_none(value)
+    return DEFAULT_TARGETS[code] if number is None else number
+
+
+# ---- Filters: كل فلتر يقبل أكثر من اختيار، والنتيجة تُحسب كمتوسط للمطابقين ----
+st.subheader("عرض حسب")
+
+all_years = sorted({r["year"] for r in mock_records})
+all_periods = sorted({r["period"] for r in mock_records})
+all_depts = sorted({r["department"] for r in mock_records})
+all_services = sorted({r["service"] for r in mock_records})
+
+
+def _sync_dept_with_services():
+    """
+    لما المستخدم يختار خدمة مباشرة، نحدد تلقائيًا القطاع (أو القطاعات)
+    المرتبطة بها، بدون ما نجبره يختار القطاع أول.
+    """
+    selected = st.session_state.get("filter_service", [])
+    if not selected:
+        return
+
+    related_depts = sorted({
+        r["department"] for r in mock_records if r["service"] in selected
+    })
+    if related_depts:
+        st.session_state["filter_dept"] = related_depts
+
+
+def _styled_multiselect(label, options, key, default=None):
+    """
+    فلتر مخصص بالكامل بشكل بطاقة أنيقة (بدل الشكل الافتراضي الرمادي):
+    عنوان الفلتر فوق، وتحته Expander يحتوي Checkbox لكل خيار +
+    "تحديد الكل"، بدون رقم عداد بالعنوان.
+
+    الملخص المعروض بعنوان الصندوق يُقرأ مباشرة من حالة كل Checkbox
+    (session_state الخاص بالودجت نفسه)، اللي تكون محدّثة فعليًا من
+    أول الـ script run — عشان ما يصير تأخر خطوة زي قبل.
+    """
+    if default is None:
+        default = options
+
+    def _is_checked(option):
+        state_k = f"{key}_opt_{option}"
+        if state_k in st.session_state:
+            return st.session_state[state_k]
+        return option in default
+
+    current = [opt for opt in options if _is_checked(opt)]
+
+    if len(current) == len(options):
+        summary_text = "الكل"
+    elif not current:
+        summary_text = "لا شيء محدد"
+    elif len(current) <= 2:
+        summary_text = "، ".join(str(v) for v in current)
+    else:
+        summary_text = f"{len(current)} خيارات محددة"
+
+    st.markdown(
+        f'<div class="filter-label">{label}</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.expander(summary_text, expanded=False, key=f"expander_{key}"):
+        select_all = st.checkbox(
+            "تحديد الكل",
+            value=(len(current) == len(options)),
+            key=f"{key}_select_all",
+        )
+
+        # لو ضغط "تحديد الكل"، نحدّث حالة كل Checkbox قبل ما ننشئها
+        # بهذا الـ run نفسه، عشان تنعكس فورًا.
+        if select_all:
+            for option in options:
+                st.session_state[f"{key}_opt_{option}"] = True
+
+        new_selection = []
+        for option in options:
+            checked = st.checkbox(
+                str(option),
+                value=option in default,
+                key=f"{key}_opt_{option}",
+            )
+            if checked:
+                new_selection.append(option)
+
+    return new_selection
+
+
+row1_col1, row1_col2 = st.columns(2)
+with row1_col1:
+    selected_years = _styled_multiselect(
+        "السنة", all_years, key="year", default=[all_years[-1]]
+    )
+with row1_col2:
+    selected_periods = _styled_multiselect(
+        "الفترة", all_periods, key="period", default=[all_periods[-1]]
+    )
+
+row2_col1, row2_col2 = st.columns(2)
+with row2_col1:
+    selected_depts = _styled_multiselect(
+        "القطاع", all_depts, key="dept", default=all_depts
+    )
+with row2_col2:
+    selected_services = _styled_multiselect(
+        "الخدمة", all_services, key="service", default=all_services
+    )
+
+# لو أي فلتر انفضّى بالغلط، نرجعه تلقائيًا لـ"الكل" بدل ما نوقف الصفحة
+if not selected_years:
+    selected_years = list(all_years)
+if not selected_periods:
+    selected_periods = list(all_periods)
+if not selected_depts:
+    selected_depts = list(all_depts)
+if not selected_services:
+    selected_services = list(all_services)
+
+matching_records = [
+    r for r in mock_records
+    if r["year"] in selected_years
+    and r["period"] in selected_periods
+    and r["department"] in selected_depts
+    and r["service"] in selected_services
+]
+
+if not matching_records:
+    st.warning("لا توجد بيانات مطابقة لهذا الاختيار.")
+    st.stop()
+
+
+def _combine_records(records):
+    """
+    يجمع سجل واحد أو أكثر في سجل موحّد:
+    - لو سجل واحد بس، يرجع كما هو (بدون أي حساب متوسط).
+    - لو أكثر من سجل، يحسب متوسط كل مؤشر وكل factor عبر السجلات كلها.
+    """
+    if len(records) == 1:
+        return records[0]
+
+    unique_depts = {r["department"] for r in records}
+    unique_services = {r["service"] for r in records}
+
+    combined = {
+        "section": next(iter(unique_depts)) if len(unique_depts) == 1 else "عدة قطاعات",
+        "department": next(iter(unique_depts)) if len(unique_depts) == 1 else "عدة قطاعات",
+        "service": next(iter(unique_services)) if len(unique_services) == 1 else f"متوسط {len(records)} خدمة/سجل",
+        "year": records[0]["year"],
+        "period": records[0]["period"],
         "factors": {},
     }
 
     for code in ("csat", "ces", "nps"):
         for suffix in ("prev", "current", "target"):
             key = f"{code}_{suffix}"
-            general[key] = _average_ignoring_none(
-                r.get(key) for r in matching
-            )
+            combined[key] = _average_ignoring_none(r.get(key) for r in records)
 
     all_factor_names = {
         name
-        for r in matching
+        for r in records
         for name in r.get("factors", {})
     }
     for factor_name in all_factor_names:
         values = [
             r["factors"][factor_name]["current_value"]
-            for r in matching
+            for r in records
             if factor_name in r.get("factors", {})
         ]
-        general["factors"][factor_name] = {
+        combined["factors"][factor_name] = {
             "current_value": _average_ignoring_none(values),
         }
 
-    return general
+    return combined
 
 
-# ---- Pick the record matching ALL filters ----
-rec = next(
-    (r for r in mock_records
-     if (dept == "كل القطاعات" or r["department"] == dept)
-     and r["year"] == year
-     and r["period"] == period
-     and (service == "كل الخدمات" or r["service"] == service)),
-    None
-)
-
-is_general_view = False
-
-if rec is None:
-    rec = _build_general_record(mock_records, year, period, dept)
-    is_general_view = True
-
-if rec is None:
-    st.warning("لا توجد أي بيانات لهذه السنة والفترة على الإطلاق")
-    st.stop()
-
-if is_general_view:
-    st.info(
-        "لا توجد بيانات مطابقة تمامًا لهذا الاختيار، "
-        "المعروض الآن متوسط عام لكل الخدمات المتاحة بنفس السنة والفترة."
-    )
+rec = _combine_records(matching_records)
 
 # ---- KPI cards: دائرة نسبة + (مستهدف يمين صغير - حالي بالنص كبير - سابق يسار صغير) ----
 LRM = "\u200e"
@@ -213,17 +396,6 @@ def donut_svg(fill_percent, display_text, color, size=140, stroke=14, font_size=
 </svg>
 </div>
 '''
-
-
-def _number_or_none(value):
-    """تحويل القيمة إلى رقم، مع قبول None والقيم الفارغة."""
-    if value is None or value == "":
-        return None
-
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _normalize(value, kind):
@@ -254,19 +426,6 @@ def _display_value(value, kind):
     rounded = int(round(number))
 
     return f"{rounded}%" if kind == "percent" else f"{rounded}"
-
-
-def _display_table_value(value, kind=None):
-    """تنسيق القيم داخل القوائم والجداول."""
-    number = _number_or_none(value)
-
-    if number is None:
-        return "—"
-
-    if kind == "percent":
-        return f"{number:g}%"
-
-    return f"{number:g}"
 
 
 def kpi_block(col, label, current, prev, target, kind):
@@ -308,7 +467,7 @@ kpi_block(
     "CSAT - رضا العميل",
     rec.get("csat_current"),
     rec.get("csat_prev"),
-    rec.get("csat_target"),
+    _target_or_default("csat", rec.get("csat_target")),
     kind="percent",
 )
 
@@ -317,7 +476,7 @@ kpi_block(
     "CES - جهد العميل",
     rec.get("ces_current"),
     rec.get("ces_prev"),
-    rec.get("ces_target"),
+    _target_or_default("ces", rec.get("ces_target")),
     kind="range",
 )
 
@@ -326,23 +485,17 @@ kpi_block(
     "NPS - التوصية بالخدمة",
     rec.get("nps_current"),
     rec.get("nps_prev"),
-    rec.get("nps_target"),
+    _target_or_default("nps", rec.get("nps_target")),
     kind="range",
 )
 
-# ---- أفضل 5 خدمات حسب CSAT + مخطط المقارنة ----
-col_top5, col_chart = st.columns([1, 1])
+# ---- أفضل 5 خدمات حسب CSAT (كرت أصغر) + مخطط المقارنة (كرت أوسع، ثلاث رسمات منفصلة) ----
+col_top5, col_chart = st.columns([0.8, 1.4])
 
 with col_top5:
     with st.container(border=True):
-        scope_records = [
-            r for r in mock_records
-            if r["year"] == year and r["period"] == period
-            and (dept == "كل القطاعات" or r["department"] == dept)
-        ]
-
         top_services = sorted(
-            scope_records,
+            matching_records,
             key=lambda r: (
                 _number_or_none(r.get("csat_current"))
                 if _number_or_none(r.get("csat_current")) is not None
@@ -364,7 +517,6 @@ with col_top5:
                 )
                 for i, r in enumerate(top_services)
             )
-            # عنوان الكارت + الصفوف بنداء واحد فقط، عشان الـ padding يضمن ينطبق فعليًا
             st.markdown(
                 f'<div style="padding: 6px 6px 0 6px;">'
                 f'<div class="card-title">أفضل 5 خدمات حسب CSAT</div>'
@@ -375,48 +527,79 @@ with col_top5:
 
 with col_chart:
     with st.container(border=True):
-        st.markdown('<div class="card-title">مقارنة السابق والحالي والمستهدف</div>', unsafe_allow_html=True)
-
-        # نفس الترتيب: CSAT ثم CES ثم NPS
-        indicators = ["CSAT", "CES", "NPS"]
-        prev = [
-            _number_or_none(rec.get("csat_prev")),
-            _number_or_none(rec.get("ces_prev")),
-            _number_or_none(rec.get("nps_prev")),
-        ]
-
-        curr = [
-            _number_or_none(rec.get("csat_current")),
-            _number_or_none(rec.get("ces_current")),
-            _number_or_none(rec.get("nps_current")),
-        ]
-
-        targ = [
-            _number_or_none(rec.get("csat_target")),
-            _number_or_none(rec.get("ces_target")),
-            _number_or_none(rec.get("nps_target")),
-        ]
-
-        fig = go.Figure()
-        fig.add_bar(name="السابق", x=indicators, y=prev, marker_color=ROLE_COLORS["previous"], marker_cornerradius=8)
-        fig.add_bar(name="الحالي", x=indicators, y=curr, marker_color=ROLE_COLORS["current"], marker_cornerradius=8)
-        fig.add_bar(name="المستهدف", x=indicators, y=targ, marker_color=ROLE_COLORS["target"], marker_cornerradius=8)
-        fig.update_layout(
-            barmode="group",
-            bargap=0.35,
-            bargroupgap=0.12,
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            height=360,
-            margin=dict(l=10, r=10, t=10, b=10),
-            font=dict(color="#16213E", size=13),
-            legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1, font=dict(size=13)),
+        st.markdown(
+            '<div class="card-title" style="text-align:center;">مقارنة السابق والحالي والمستهدف</div>',
+            unsafe_allow_html=True,
         )
-        fig.update_yaxes(showgrid=True, gridcolor="#F1F2F7", gridwidth=1, zeroline=False, showline=False)
-        fig.update_xaxes(showgrid=False, showline=False, zeroline=False)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-# ---- توزيع CSAT حسب العوامل (Factors) للخدمة أو العرض العام المختار ----
+        # كل مؤشر يحتفظ بمقياسه الصحيح، لكن الهامش ثابت وموحّد للثلاثة
+        # عشان صندوق الرسم نفسه (الحدود) يكون بنفس المحاذاة والارتفاع.
+        indicator_specs = [
+            ("CSAT", rec.get("csat_prev"), rec.get("csat_current"), _target_or_default("csat", rec.get("csat_target")), [0, 100]),
+            ("CES", rec.get("ces_prev"), rec.get("ces_current"), _target_or_default("ces", rec.get("ces_target")), [-100, 100]),
+            ("NPS", rec.get("nps_prev"), rec.get("nps_current"), _target_or_default("nps", rec.get("nps_target")), [-100, 100]),
+        ]
+
+        categories = ["السابق", "الحالي", "المستهدف"]
+        role_order = [ROLE_COLORS["previous"], ROLE_COLORS["current"], ROLE_COLORS["target"]]
+
+        mini_col1, mini_col2, mini_col3 = st.columns(3)
+
+        for mini_col, (name, prev_v, curr_v, targ_v, y_range) in zip(
+            [mini_col1, mini_col2, mini_col3], indicator_specs
+        ):
+            with mini_col:
+                st.markdown(
+                    f'<div style="text-align:center; font-weight:800; '
+                    f'color:#16213E; margin-bottom:6px;">{name}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                values = [
+                    _number_or_none(prev_v) or 0,
+                    _number_or_none(curr_v) or 0,
+                    _number_or_none(targ_v) or 0,
+                ]
+
+                mini_fig = go.Figure()
+                mini_fig.add_bar(
+                    x=categories,
+                    y=values,
+                    marker_color=role_order,
+                    marker_cornerradius=6,
+                )
+                mini_fig.update_layout(
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    height=320,
+                    margin=dict(l=50, r=10, t=10, b=45),  # هامش سفلي أكبر لنص المحور
+                    font=dict(color="#16213E", size=12),
+                    showlegend=False,
+                )
+                mini_fig.update_yaxes(
+                    range=y_range,
+                    showgrid=True,
+                    gridcolor="#F1F2F7",
+                    zeroline=True,
+                    zerolinecolor="#8A94B5",
+                    zerolinewidth=2,
+                    automargin=False,  # عشان الهامش يبقى ثابت وما يختلف حسب طول الرقم
+                    tickfont=dict(size=11),
+                    dtick=25 if y_range[0] == 0 else 50,
+                )
+                mini_fig.update_xaxes(
+                    showgrid=False,
+                    tickangle=0,          # يمنع ميلان النص
+                    tickfont=dict(size=11),
+                )
+
+                st.plotly_chart(
+                    mini_fig,
+                    use_container_width=True,
+                    config={"displayModeBar": False},
+                )
+
+# ---- توزيع CSAT حسب العوامل (Factors) للاختيار الحالي ----
 with st.container(border=True):
     st.markdown(
         '<div class="card-title" style="text-align:center;">CSAT حسب العوامل</div>',
@@ -444,7 +627,7 @@ with st.container(border=True):
         ]
 
         bar_colors = [
-            ROLE_COLORS["current"] if v is not None else COLORS["muted"]
+            COLORS["purple"] if v is not None else COLORS["muted"]
             for v in display_values
         ]
 
@@ -463,22 +646,23 @@ with st.container(border=True):
             text=text_labels,
             textposition="outside",
             textfont=dict(color="#16213E", size=13),
+            hovertemplate="%{y}<br>%{x:.2f}%<extra></extra>",
         )
         factor_fig.update_layout(
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             height=max(340, 80 * len(display_names)),
-            bargap=0.45,                  # يخلي الأشرطة أرفع بدل ما تملأ الصف كامل
+            bargap=0.45,
             margin=dict(l=10, r=200, t=10, b=10),
             font=dict(color="#16213E", size=13),
             xaxis=dict(
-                range=[100, 0],           # معكوس: يبدأ من اليمين
+                range=[100, 0],
                 showgrid=True,
                 gridcolor="#F1F2F7",
                 zeroline=False,
             ),
             yaxis=dict(
-                side="right",              # أسماء العوامل يمين الرسم
+                side="right",
                 showgrid=False,
                 zeroline=False,
                 automargin=True,
@@ -492,7 +676,7 @@ with st.container(border=True):
             config={"displayModeBar": False},
         )
 
-# ---- Recent records table (آخر 5 إدخالات فقط) ----
+# ---- Recent records table (آخر 5 إدخالات ضمن الاختيار الحالي) ----
 st.subheader("أحدث الإدخالات")
 
 st.markdown("""
@@ -555,8 +739,9 @@ def make_row(r):
     )
 
 
-# آخر 5 سجلات فقط (mock_records مرتبة من الأحدث للأقدم من data_service.py)
-rows_html = "".join(make_row(r) for r in mock_records[:5])
+# آخر 5 سجلات ضمن السجلات المطابقة للفلاتر (matching_records محفوظة بترتيب
+# الأحدث للأقدم لأن mock_records أصلاً مرتبة كذلك من data_service.py)
+rows_html = "".join(make_row(r) for r in matching_records[:5])
 
 table_html = (
     f'<div dir="rtl" style="text-align:right; background:{COLORS["card"]}; border-radius:16px; '
