@@ -1,22 +1,39 @@
+# -*- coding: utf-8 -*-
+"""
+data_upload.py
+--------------
+صفحة رفع بيانات الأقسام والخدمات مع مطابقة ذكية لأسماء الأعمدة.
+
+يرسل النظام إلى OpenAI أسماء الأعمدة فقط، ولا يرسل محتوى الصفوف
+أو إجابات العملاء أو التعليقات.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
 import re
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
 
+from column_mapper_ai import map_section_columns_with_ai
 from data_service import (
     CALCULATED_DATA,
     RAW_DATA,
     prepare_uploaded_records,
 )
-from entry_backend import (
-    get_factors,
-    save_uploaded_records,
-)
+from entry_backend import get_factors, save_uploaded_records
 from style import apply_theme
 
 
 apply_theme()
 
+
+# ==================================================
+# تنسيق الصفحة
+# ==================================================
 
 st.markdown(
     """
@@ -24,11 +41,14 @@ st.markdown(
     div[data-testid="stMainBlockContainer"] {
         direction: rtl;
         text-align: right;
+        max-width: 1350px;
+        padding-top: 1.5rem;
     }
 
     div[data-testid="stMarkdownContainer"],
     div[data-testid="stCaptionContainer"],
-    label[data-testid="stWidgetLabel"] {
+    label[data-testid="stWidgetLabel"],
+    div[data-testid="stAlert"] {
         direction: rtl;
         text-align: right;
     }
@@ -51,13 +71,57 @@ st.markdown(
         justify-content: flex-start;
     }
 
-    div[role="radiogroup"] label,
-    div[data-baseweb="tag"],
-    div[data-testid="stAlert"],
-    div[data-testid="stButton"],
-    details {
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 16px !important;
+        border: 1px solid #E7E8F1 !important;
+        box-shadow: 0 5px 18px rgba(22, 33, 62, 0.04);
+        background: #FFFFFF;
+    }
+
+    .upload-header {
+        background: #FFFFFF;
+        border: 1px solid #E7E8F1;
+        border-radius: 18px;
+        padding: 24px 28px;
+        margin-bottom: 18px;
+    }
+
+    .upload-header h1 {
+        color: #16213E;
+        font-size: 32px;
+        font-weight: 850;
+        margin: 0 0 7px;
+    }
+
+    .upload-header p {
+        color: #7A7F94;
+        font-size: 15px;
+        margin: 0;
+        line-height: 1.8;
+    }
+
+    .privacy-text {
+        color: #2FA88E;
+        font-size: 13px;
+        font-weight: 750;
+        margin-top: 10px;
+    }
+
+    .section-title {
+        color: #16213E;
+        font-size: 20px;
+        font-weight: 850;
+        margin-bottom: 4px;
+    }
+
+    .section-description {
+        color: #7A7F94;
+        font-size: 14px;
+        margin-bottom: 12px;
+    }
+
+    div[data-testid="stDataFrame"] {
         direction: rtl;
-        text-align: right;
     }
     </style>
     """,
@@ -66,18 +130,10 @@ st.markdown(
 
 
 # ==================================================
-# خيارات الواجهة
+# الثوابت
 # ==================================================
 
 NO_COLUMN = "غير موجود"
-
-SECTION_NONE = "لا يوجد قسم داخل الملف"
-SECTION_FROM_COLUMN = "يوجد عمود قسم داخل الملف"
-
-TIME_FROM_DATE = "يوجد عمود تاريخ"
-TIME_FROM_COMBINED = "السنة والفترة في عمود واحد"
-TIME_FROM_COLUMNS = "السنة والفترة في عمودين منفصلين"
-TIME_FIXED = "سنة وفترة واحدة لكل الملف"
 
 RAW_DATA_LABEL = "إجابات استبيان خام"
 CALCULATED_DATA_LABEL = "نتائج محسوبة مسبقًا"
@@ -85,48 +141,105 @@ CALCULATED_DATA_LABEL = "نتائج محسوبة مسبقًا"
 FIRST_HALF = "النصف الأول"
 SECOND_HALF = "النصف الثاني"
 
+TIME_LABELS = {
+    "date": "من عمود تاريخ",
+    "combined": "السنة والفترة في عمود واحد",
+    "separate": "السنة والفترة في عمودين",
+    "fixed": "سنة وفترة ثابتتان لكل الملف",
+}
+
+REVIEW_WIDGET_KEYS = [
+    "review_service",
+    "review_section",
+    "review_time_mode",
+    "review_date",
+    "review_combined",
+    "review_year",
+    "review_period",
+    "review_ces_raw",
+    "review_ces_calculated",
+    "review_nps",
+    "review_response_id",
+    "review_bps",
+    "review_participants",
+    "review_fixed_year",
+    "review_fixed_period",
+    "show_all_mapping_fields",
+]
+
 
 # ==================================================
-# دوال مساعدة
+# أدوات مساعدة
 # ==================================================
 
-def find_default_index(options, preferred_names):
-    """اختيار العمود المتوقع تلقائيًا إذا كان موجودًا."""
-    for name in preferred_names:
-        if name in options:
-            return options.index(name)
+def mapping_signature(column_names, factor_names, data_mode):
+    payload = json.dumps(
+        {
+            "columns": column_names,
+            "factors": factor_names,
+            "mode": data_mode,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+    return hashlib.sha256(
+        payload.encode("utf-8")
+    ).hexdigest()
+
+
+def clear_review_state():
+    keys = list(REVIEW_WIDGET_KEYS)
+
+    keys.extend(
+        key
+        for key in st.session_state
+        if str(key).startswith("review_factor_")
+    )
+
+    for key in keys:
+        st.session_state.pop(key, None)
+
+
+def option_index(options, selected):
+    if selected in options:
+        return options.index(selected)
 
     return 0
 
 
-def find_default_columns(columns, preferred_names):
-    """اختيار الأعمدة المتوقعة تلقائيًا."""
-    return [
-        name
-        for name in preferred_names
-        if name in columns
-    ]
+def optional_column(
+    label,
+    columns,
+    selected=None,
+    *,
+    key,
+    help=None,
+):
+    options = [NO_COLUMN, *columns]
+
+    selected_value = st.selectbox(
+        label,
+        options=options,
+        index=option_index(options, selected),
+        key=key,
+        help=help,
+    )
+
+    if selected_value == NO_COLUMN:
+        return None
+
+    return selected_value
 
 
 def parse_year_period(value):
-    """
-    استخراج السنة والفترة من قيمة واحدة.
-
-    يقبل مثلًا:
-    - النصف الأول 2025
-    - النصف الثاني 2025
-    - 2025 H1
-    - H2 2025
-
-    لكنه يعيد الفترة بالعربية دائمًا.
-    """
+    """استخراج السنة والنصف من قيمة مثل النصف الأول 2026 أو H2 2026."""
     if pd.isna(value):
-        raise ValueError(
-            "قيمة السنة والفترة فارغة."
-        )
+        raise ValueError("قيمة السنة والفترة فارغة.")
 
-    text = str(value).strip()
-    text = text.translate(
+    original = str(value).strip()
+
+    text = original.translate(
         str.maketrans(
             "٠١٢٣٤٥٦٧٨٩",
             "0123456789",
@@ -155,12 +268,10 @@ def parse_year_period(value):
 
     if not year_match:
         raise ValueError(
-            f"تعذر استخراج السنة من القيمة: {text}"
+            f"تعذر استخراج السنة من القيمة: {original}"
         )
 
-    year = int(year_match.group())
-
-    first_half_patterns = [
+    first_patterns = [
         "النصف الاول",
         "النصف 1",
         "h1",
@@ -168,7 +279,7 @@ def parse_year_period(value):
         "first half",
     ]
 
-    second_half_patterns = [
+    second_patterns = [
         "النصف الثاني",
         "النصف 2",
         "h2",
@@ -178,117 +289,154 @@ def parse_year_period(value):
 
     if any(
         pattern in normalized
-        for pattern in first_half_patterns
+        for pattern in first_patterns
     ):
         period = FIRST_HALF
 
     elif any(
         pattern in normalized
-        for pattern in second_half_patterns
+        for pattern in second_patterns
     ):
         period = SECOND_HALF
 
     else:
         raise ValueError(
-            "تعذر تحديد النصف الأول أو الثاني "
-            f"من القيمة: {text}"
+            f"تعذر تحديد النصف من القيمة: {original}"
         )
 
-    return year, period
+    return int(year_match.group()), period
 
 
-def build_factor_mapping(
-    factor_rows,
-    available_columns,
-    key_prefix,
-    calculated=False,
+def required_mapping_gaps(mapping, factor_names):
+    gaps = []
+
+    if not mapping.get("service_column"):
+        gaps.append("اسم الخدمة")
+
+    time_mode = mapping.get("time_mode")
+
+    if time_mode == "date":
+        if not mapping.get("date_column"):
+            gaps.append("التاريخ")
+
+    elif time_mode == "combined":
+        if not mapping.get("combined_time_column"):
+            gaps.append("السنة والفترة")
+
+    elif time_mode == "separate":
+        if not mapping.get("year_column"):
+            gaps.append("السنة")
+
+        if not mapping.get("period_column"):
+            gaps.append("الفترة")
+
+    else:
+        gaps.append("طريقة السنة والفترة")
+
+    factor_mapping = mapping.get(
+        "factor_mappings",
+        {},
+    )
+
+    for factor_name in factor_names:
+        if not factor_mapping.get(factor_name):
+            gaps.append(factor_name)
+
+    return gaps
+
+
+def validate_mapping(
+    *,
+    service_column,
+    time_mode,
+    date_column,
+    combined_time_column,
+    year_column,
+    period_column,
+    factor_mapping,
+    ces_columns,
+    nps_column,
+    bps_column,
+    data_mode,
 ):
-    """
-    عرض اختيار مستقل لكل عامل ثابت موجود في الداتابيس.
-
-    الناتج:
-        {اسم العامل: اسم عمود Excel}
-    """
-    mapping = {}
-    options = [NO_COLUMN] + available_columns
-
-    for index, factor in enumerate(factor_rows):
-        factor_name = factor["name"]
-
-        preferred_names = [
-            factor_name,
-            factor_name.replace(" ", "_"),
-        ]
-
-        default_index = find_default_index(
-            options,
-            preferred_names,
-        )
-
-        label = (
-            f"عمود نتيجة: {factor_name} *"
-            if calculated
-            else f"عمود إجابات: {factor_name} *"
-        )
-
-        selected_column = st.selectbox(
-            label,
-            options=options,
-            index=default_index,
-            key=f"{key_prefix}_{index}",
-        )
-
-        if selected_column != NO_COLUMN:
-            mapping[factor_name] = selected_column
-
-    return mapping
-
-
-def validate_factor_mapping(
-    mapping,
-    factor_names,
-    field_name,
-):
-    """التحقق من ربط العوامل السبعة كاملة بدون تكرار."""
     errors = []
 
-    missing = [
-        factor_name
-        for factor_name in factor_names
-        if factor_name not in mapping
-    ]
+    if not service_column:
+        errors.append("عمود اسم الخدمة مطلوب.")
 
-    if missing:
-        errors.append(
-            f"{field_name}: يجب تحديد عمود لكل عامل. "
-            "العوامل غير المرتبطة: "
-            + "، ".join(missing)
-        )
+    if time_mode == "date" and not date_column:
+        errors.append("عمود التاريخ مطلوب.")
 
-    selected_columns = list(mapping.values())
-
-    if len(selected_columns) != len(
-        set(selected_columns)
+    elif (
+        time_mode == "combined"
+        and not combined_time_column
     ):
         errors.append(
-            f"{field_name}: لا يمكن استخدام العمود "
-            "نفسه لأكثر من عامل."
+            "عمود السنة والفترة مطلوب."
+        )
+
+    elif time_mode == "separate":
+        if not year_column:
+            errors.append("عمود السنة مطلوب.")
+
+        if not period_column:
+            errors.append("عمود الفترة مطلوب.")
+
+    missing_factors = [
+        factor_name
+        for factor_name, column_name
+        in factor_mapping.items()
+        if not column_name
+    ]
+
+    if missing_factors:
+        errors.append(
+            "لم يتم ربط العوامل التالية: "
+            + "، ".join(missing_factors)
+        )
+
+    used_columns = [
+        column_name
+        for column_name in factor_mapping.values()
+        if column_name
+    ]
+
+    used_columns.extend(ces_columns)
+
+    if nps_column:
+        used_columns.append(nps_column)
+
+    if (
+        data_mode == "calculated"
+        and bps_column
+    ):
+        used_columns.append(bps_column)
+
+    if len(used_columns) != len(
+        set(used_columns)
+    ):
+        errors.append(
+            "لا يمكن استخدام عمود واحد لأكثر من عامل أو مؤشر."
         )
 
     return errors
 
 
 # ==================================================
-# عنوان الصفحة
+# رأس الصفحة
 # ==================================================
 
 st.markdown(
     """
-    <div dir="rtl" style="text-align: right;">
+    <div class="upload-header" dir="rtl">
         <h1>رفع البيانات</h1>
-        <p style="color: #7A7F94; font-size: 17px;">
-            ارفع ملف Excel وحدد وظيفة الأعمدة، ثم احفظ البيانات في قاعدة البيانات
+        <p>
+            ارفع ملف Excel، ثم دع النظام يطابق أسماء الأعمدة تلقائيًا.
+            راجع النتيجة وعدّل الحقول غير الصحيحة.
         </p>
+        <div class="privacy-text">
+            يتم إرسال أسماء الأعمدة فقط إلى OpenAI
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -300,725 +448,727 @@ st.markdown(
 # ==================================================
 
 uploaded_file = st.file_uploader(
-    "اسحب ملف Excel هنا أو اضغط للاختيار",
+    "ملف Excel",
     type=["xlsx", "xls"],
 )
 
+if uploaded_file is None:
+    st.info("ارفع ملف Excel للبدء.")
+    st.stop()
 
-if uploaded_file is not None:
-    try:
-        dataframe = pd.read_excel(
-            uploaded_file
-        )
 
-        dataframe.columns = [
-            str(column).strip()
-            for column in dataframe.columns
-        ]
-
-    except Exception as error:
-        st.error(
-            f"تعذر قراءة ملف Excel: {error}"
-        )
-        st.stop()
-
-    if dataframe.empty:
-        st.warning(
-            "ملف Excel لا يحتوي على بيانات."
-        )
-        st.stop()
-
-    try:
-        factor_rows = get_factors()
-
-    except Exception as error:
-        st.error(
-            "تعذر قراءة عوامل CSAT من قاعدة البيانات: "
-            f"{error}"
-        )
-        st.stop()
-
-    if len(factor_rows) != 7:
-        st.error(
-            "يجب أن يحتوي جدول Factors على سبعة عوامل "
-            f"بالضبط. الموجود حاليًا: {len(factor_rows)}. "
-            "شغلي seed_data.py بعد إضافة الأسماء الرسمية."
-        )
-        st.stop()
-
-    factor_names = [
-        factor["name"]
-        for factor in factor_rows
-    ]
-
-    available_columns = (
-        dataframe.columns.tolist()
+try:
+    dataframe = pd.read_excel(
+        uploaded_file
     )
 
-    optional_columns = [
-        NO_COLUMN,
-        *available_columns,
+    dataframe.columns = [
+        str(column).strip()
+        for column in dataframe.columns
     ]
 
-    st.success(
-        "تمت قراءة الملف بنجاح — "
-        f"عدد الصفوف: {len(dataframe)}"
+except Exception as error:
+    st.error(
+        f"تعذر قراءة ملف Excel: {error}"
     )
+    st.stop()
+
+
+if dataframe.empty:
+    st.warning(
+        "ملف Excel لا يحتوي على بيانات."
+    )
+    st.stop()
+
+
+try:
+    factor_rows = get_factors()
+
+except Exception as error:
+    st.error(
+        "تعذر قراءة عوامل CSAT من قاعدة البيانات: "
+        f"{error}"
+    )
+    st.stop()
+
+
+if len(factor_rows) != 7:
+    st.error(
+        "جدول Factors يجب أن يحتوي على سبعة عوامل. "
+        f"الموجود حاليًا: {len(factor_rows)}."
+    )
+    st.stop()
+
+
+factor_names = [
+    factor["name"]
+    for factor in factor_rows
+]
+
+available_columns = (
+    dataframe.columns.tolist()
+)
+
+
+# ==================================================
+# إعداد الملف والتحليل
+# ==================================================
+
+with st.container(border=True):
+    st.markdown(
+        '<div class="section-title">إعداد الملف</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.caption("اسم الملف")
+    st.markdown(f"**{uploaded_file.name}**")
+
+    info_col1, info_col2 = st.columns(2)
+
+    with info_col1:
+        st.caption("عدد الصفوف")
+        st.markdown(f"**{len(dataframe):,}**")
+
+    with info_col2:
+        st.caption("عدد الأعمدة")
+        st.markdown(f"**{len(available_columns):,}**")
+
+    data_mode_label = st.radio(
+        "نوع البيانات الموجودة في الملف",
+        options=[
+            RAW_DATA_LABEL,
+            CALCULATED_DATA_LABEL,
+        ],
+        horizontal=True,
+    )
+
+    data_mode = (
+        "raw"
+        if data_mode_label == RAW_DATA_LABEL
+        else "calculated"
+    )
+
+    current_signature = mapping_signature(
+        available_columns,
+        factor_names,
+        data_mode,
+    )
+
+    previous_signature = st.session_state.get(
+        "section_mapping_signature"
+    )
+
+    if previous_signature != current_signature:
+        st.session_state.pop(
+            "section_ai_mapping",
+            None,
+        )
+
+        clear_review_state()
+
+        st.session_state[
+            "section_mapping_signature"
+        ] = current_signature
 
     with st.expander(
-        "معاينة الملف",
+        "معاينة أول 15 صفًا",
         expanded=False,
     ):
         st.dataframe(
-            dataframe.head(20),
+            dataframe.head(15),
             use_container_width=True,
             hide_index=True,
         )
 
-    # ==================================================
-    # 1. البيانات الأساسية
-    # ==================================================
-
-    with st.container(border=True):
-        st.markdown(
-            "## 1. البيانات الأساسية"
-        )
-
-        st.caption(
-            "حددي الخدمة والقسم والفترة الزمنية الخاصة بالبيانات."
-        )
-
-        service_column = st.selectbox(
-            "عمود اسم الخدمة *",
-            options=available_columns,
-            index=find_default_index(
-                available_columns,
-                [
-                    "اسم_الخدمة",
-                    "اسم الخدمة",
-                    "الخدمة",
-                    "Service",
-                    "Service Name",
-                ],
-            ),
-        )
-
-        st.markdown("#### القسم")
-
-        section_mode = st.radio(
-            "طريقة تحديد القسم",
-            options=[
-                SECTION_NONE,
-                SECTION_FROM_COLUMN,
-            ],
-            index=0,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-
-        section_column = None
-        fixed_section = "غير محدد"
-
-        if section_mode == SECTION_FROM_COLUMN:
-            section_column = st.selectbox(
-                "عمود اسم القسم",
-                options=available_columns,
-                index=find_default_index(
-                    available_columns,
-                    [
-                        "اسم_القسم",
-                        "اسم القسم",
-                        "القسم",
-                        "Section",
-                        "Section Name",
-                        "Department",
-                    ],
-                ),
-            )
-
-            fixed_section = None
-
-        else:
-            st.caption(
-                'سيُحفظ القسم تلقائيًا باسم "غير محدد".'
-            )
-
-        st.markdown("#### السنة والفترة")
-
-        time_mode = st.radio(
-            "طريقة تحديد السنة والفترة",
-            options=[
-                TIME_FROM_DATE,
-                TIME_FROM_COMBINED,
-                TIME_FROM_COLUMNS,
-                TIME_FIXED,
-            ],
-            index=1,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-
-        combined_time_column = None
-        date_column = None
-        year_column = None
-        period_column = None
-        fixed_year = None
-        fixed_period = None
-
-        if time_mode == TIME_FROM_DATE:
-            date_column = st.selectbox(
-                "عمود التاريخ *",
-                options=available_columns,
-                index=find_default_index(
-                    available_columns,
-                    [
-                        "تاريخ_الاستجابة",
-                        "تاريخ الاستجابة",
-                        "التاريخ",
-                        "Response Date",
-                        "Date",
-                    ],
-                ),
-                help=(
-                    "سيستخرج النظام السنة تلقائيًا، "
-                    "ويحفظ الفترة باسم النصف الأول "
-                    "أو النصف الثاني حسب الشهر."
-                ),
-            )
-
-        elif time_mode == TIME_FROM_COMBINED:
-            combined_time_column = st.selectbox(
-                "عمود السنة والفترة *",
-                options=available_columns,
-                index=find_default_index(
-                    available_columns,
-                    [
-                        "فترة القياس",
-                        "السنة والفترة",
-                        "السنة و الفترة",
-                        "الفترة الزمنية",
-                        "Measurement Period",
-                        "Period",
-                    ],
-                ),
-                help=(
-                    "أمثلة مقبولة: النصف الأول 2025، "
-                    "النصف الثاني 2025. ويمكن قراءة H1 وH2 "
-                    "من الملف لكنهما سيُحفظان بالعربية."
-                ),
-            )
-
-        elif time_mode == TIME_FROM_COLUMNS:
-            time_col1, time_col2 = st.columns(2)
-
-            with time_col1:
-                year_column = st.selectbox(
-                    "عمود السنة *",
-                    options=available_columns,
-                    index=find_default_index(
-                        available_columns,
-                        [
-                            "السنة",
-                            "السنه",
-                            "العام",
-                            "Year",
-                        ],
-                    ),
-                )
-
-            with time_col2:
-                period_column = st.selectbox(
-                    "عمود الفترة *",
-                    options=available_columns,
-                    index=find_default_index(
-                        available_columns,
-                        [
-                            "الفترة",
-                            "الفتره",
-                            "النصف",
-                            "Period",
-                        ],
-                    ),
-                    help=(
-                        "القيم الأساسية: النصف الأول "
-                        "والنصف الثاني. ويمكن قراءة H1 وH2 "
-                        "لكن التخزين سيكون بالعربية."
-                    ),
-                )
-
-        else:
-            fixed_col1, fixed_col2 = (
-                st.columns(2)
-            )
-
-            with fixed_col1:
-                fixed_year = st.number_input(
-                    "السنة *",
-                    min_value=2000,
-                    max_value=2100,
-                    value=2026,
-                    step=1,
-                )
-
-            with fixed_col2:
-                fixed_period = st.selectbox(
-                    "الفترة *",
-                    options=[
-                        FIRST_HALF,
-                        SECOND_HALF,
-                    ],
-                )
-
-    # ==================================================
-    # 2. العوامل والمؤشرات
-    # ==================================================
-
-    with st.container(border=True):
-        st.markdown(
-            "## 2. عوامل CSAT والمؤشرات"
-        )
-
-        data_mode_label = st.radio(
-            "نوع البيانات الموجودة داخل الملف",
-            options=[
-                RAW_DATA_LABEL,
-                CALCULATED_DATA_LABEL,
-            ],
-            horizontal=True,
-        )
-
-        response_id_column = None
-        factor_column_mapping = {}
-        calculated_factor_column_mapping = {}
-        ces_columns = []
-        nps_column = None
-        calculated_ces_column = None
-        calculated_nps_column = None
-        calculated_bps_column = None
-        participants_column = None
-
-        if data_mode_label == RAW_DATA_LABEL:
-            st.caption(
-                "حددي عمود الإجابات المقابل لكل عامل من "
-                "العوامل السبعة، وسيحسب النظام نتيجة كل عامل."
-            )
-
-            response_id_selection = st.selectbox(
-                "عمود رقم الاستجابة",
-                options=optional_columns,
-                index=find_default_index(
-                    optional_columns,
-                    [
-                        "رقم_الاستجابة",
-                        "رقم الاستجابة",
-                        "Response ID",
-                        "ID",
-                    ],
-                ),
-                help=(
-                    "يُستخدم لحساب عدد المشاركين بدون تكرار. "
-                    "عند عدم وجوده سيحسب النظام عدد الصفوف."
-                ),
-            )
-
-            if response_id_selection != NO_COLUMN:
-                response_id_column = (
-                    response_id_selection
-                )
-
-            st.markdown(
-                "#### ربط العوامل السبعة بأعمدة الإجابات"
-            )
-
-            factor_column_mapping = build_factor_mapping(
-                factor_rows=factor_rows,
-                available_columns=available_columns,
-                key_prefix="raw_factor",
-                calculated=False,
-            )
-
-            default_ces_columns = find_default_columns(
-                available_columns,
-                [
-                    "CES",
-                    "سهولة الاستخدام",
-                    "الجهد المبذول",
-                ],
-            )
-
-            ces_columns = st.multiselect(
-                "أسئلة CES",
-                options=available_columns,
-                default=default_ces_columns,
-                help=(
-                    "يمكن اختيار أكثر من سؤال. سيحسب النظام "
-                    "CES لكل سؤال ثم يأخذ المتوسط."
-                ),
-            )
-
-            nps_selection = st.selectbox(
-                "عمود إجابات NPS",
-                options=optional_columns,
-                index=find_default_index(
-                    optional_columns,
-                    [
-                        "تقييم_الترشيح_NPS",
-                        "NPS",
-                        "التوصية",
-                    ],
-                ),
-            )
-
-            if nps_selection != NO_COLUMN:
-                nps_column = nps_selection
-
-            with st.expander(
-                "طريقة حساب النتائج"
-            ):
-                st.markdown(
-                    """
-                    - **كل عامل CSAT:** نسبة التقييمات 4 و5 من مقياس 1–5.
-                    - **CSAT العام:** متوسط نتائج العوامل السبعة، ويُحفظ تلقائيًا ضمن نتائج المؤشرات.
-                    - **CES:** نسبة الإجابات السهلة 4–5 ناقص نسبة الإجابات الصعبة 1–2.
-                    - **NPS:** نسبة الموصين 9–10 ناقص نسبة غير الموصين 0–6.
-                    - القيم خارج نطاق السؤال، مثل 99، تُستبعد.
-                    """
-                )
-
-        else:
-            st.caption(
-                "حددي عمود النتيجة النهائية المقابل لكل عامل. "
-                "لن يعيد النظام حساب هذه النتائج."
-            )
-
-            st.markdown(
-                "#### ربط العوامل السبعة بأعمدة النتائج"
-            )
-
-            calculated_factor_column_mapping = (
-                build_factor_mapping(
-                    factor_rows=factor_rows,
-                    available_columns=available_columns,
-                    key_prefix="calculated_factor",
-                    calculated=True,
-                )
-            )
-
-            calculated_col1, calculated_col2, calculated_col3 = (
-                st.columns(3)
-            )
-
-            with calculated_col1:
-                ces_selection = st.selectbox(
-                    "عمود قيمة CES",
-                    options=optional_columns,
-                    index=find_default_index(
-                        optional_columns,
-                        [
-                            "CES",
-                            "CES الحالي",
-                            "Current CES",
-                        ],
-                    ),
-                )
-
-                if ces_selection != NO_COLUMN:
-                    calculated_ces_column = (
-                        ces_selection
-                    )
-
-            with calculated_col2:
-                nps_selection = st.selectbox(
-                    "عمود قيمة NPS",
-                    options=optional_columns,
-                    index=find_default_index(
-                        optional_columns,
-                        [
-                            "NPS",
-                            "NPS الحالي",
-                            "Current NPS",
-                        ],
-                    ),
-                )
-
-                if nps_selection != NO_COLUMN:
-                    calculated_nps_column = (
-                        nps_selection
-                    )
-
-            with calculated_col3:
-                bps_selection = st.selectbox(
-                    "عمود قيمة BPS",
-                    options=optional_columns,
-                    index=find_default_index(
-                        optional_columns,
-                        [
-                            "BPS",
-                            "BPS الحالي",
-                            "Current BPS",
-                        ],
-                    ),
-                )
-
-                if bps_selection != NO_COLUMN:
-                    calculated_bps_column = (
-                        bps_selection
-                    )
-
-            participants_selection = st.selectbox(
-                "عمود عدد المشاركين",
-                options=optional_columns,
-                index=find_default_index(
-                    optional_columns,
-                    [
-                        "عدد المشاركين",
-                        "عدد_المشاركين",
-                        "Participants",
-                        "Participants Count",
-                    ],
-                ),
-                help=(
-                    "إذا لم يوجد العمود، سيعتمد النظام على عدد الصفوف."
-                ),
-            )
-
-            if participants_selection != NO_COLUMN:
-                participants_column = (
-                    participants_selection
-                )
-
-    # ==================================================
-    # 3. التعليقات
-    # ==================================================
-
-    with st.container(border=True):
-        st.markdown("## 3. التعليقات")
-
-        st.caption(
-            "اختيار أعمدة التعليقات اختياري. "
-            "يمكن اختيار أكثر من عمود."
-        )
-
-        default_comment_columns = [
-            column
-            for column in available_columns
-            if (
-                "تعليق" in column
-                or "comment" in column.lower()
-                or "ملاحظة" in column
-            )
-        ]
-
-        comment_columns = st.multiselect(
-            "أعمدة التعليقات",
-            options=available_columns,
-            default=default_comment_columns,
-        )
-
-    # ==================================================
-    # التحقق والحفظ
-    # ==================================================
-
-    save_button = st.button(
-        "التحقق وحفظ البيانات",
+    analyze_clicked = st.button(
+        "تحليل أسماء الأعمدة",
         type="primary",
         use_container_width=True,
     )
 
-    if save_button:
-        errors = []
 
-        if data_mode_label == RAW_DATA_LABEL:
-            errors.extend(
-                validate_factor_mapping(
-                    mapping=factor_column_mapping,
-                    factor_names=factor_names,
-                    field_name="عوامل CSAT",
-                )
+if analyze_clicked:
+    try:
+        with st.spinner(
+            "جاري مطابقة أسماء الأعمدة..."
+        ):
+            st.session_state[
+                "section_ai_mapping"
+            ] = map_section_columns_with_ai(
+                column_names=available_columns,
+                factor_names=factor_names,
+                data_mode=data_mode,
             )
 
-            factor_columns = set(
-                factor_column_mapping.values()
+        clear_review_state()
+        st.rerun()
+
+    except Exception as error:
+        st.error(
+            f"تعذر تحليل أسماء الأعمدة: {error}"
+        )
+
+
+mapping = st.session_state.get(
+    "section_ai_mapping"
+)
+
+if not mapping:
+    st.stop()
+
+
+# ==================================================
+# ملخص المطابقة
+# ==================================================
+
+gaps = required_mapping_gaps(
+    mapping,
+    factor_names,
+)
+
+factor_mapping_from_ai = mapping.get(
+    "factor_mappings",
+    {},
+)
+
+matched_factor_count = sum(
+    1
+    for factor_name in factor_names
+    if factor_mapping_from_ai.get(factor_name)
+)
+
+matched_indicators = []
+
+if mapping.get("ces_columns"):
+    matched_indicators.append("CES")
+
+if mapping.get("nps_column"):
+    matched_indicators.append("NPS")
+
+if (
+    data_mode == "calculated"
+    and mapping.get("bps_column")
+):
+    matched_indicators.append("BPS")
+
+basic_ready = bool(
+    mapping.get("service_column")
+)
+
+time_mode_from_ai = mapping.get("time_mode")
+
+if time_mode_from_ai == "date":
+    time_ready = bool(
+        mapping.get("date_column")
+    )
+
+elif time_mode_from_ai == "combined":
+    time_ready = bool(
+        mapping.get("combined_time_column")
+    )
+
+elif time_mode_from_ai == "separate":
+    time_ready = bool(
+        mapping.get("year_column")
+        and mapping.get("period_column")
+    )
+
+else:
+    time_ready = False
+
+
+with st.container(border=True):
+    st.markdown(
+        '<div class="section-title">المطابقة جاهزة</div>',
+        unsafe_allow_html=True,
+    )
+
+    if gaps:
+        st.warning(
+            "يلزم مراجعة الحقول التالية قبل الحفظ: "
+            + "، ".join(gaps)
+        )
+    else:
+        st.success(
+            "تم التعرف على جميع الحقول الأساسية والعوامل."
+        )
+
+    indicators_text = (
+        " و ".join(matched_indicators)
+        if matched_indicators
+        else "لا توجد مؤشرات مطابقة"
+    )
+
+    period_text = (
+        TIME_LABELS.get(time_mode_from_ai)
+        if time_ready
+        else "تحتاج مراجعة"
+    )
+
+    st.caption(
+        "البيانات الأساسية: "
+        + ("مكتملة" if basic_ready else "تحتاج مراجعة")
+        + " | عوامل CSAT: "
+        + f"{matched_factor_count}/{len(factor_names)}"
+        + " | المؤشرات: "
+        + indicators_text
+        + " | الفترة: "
+        + period_text
+    )
+
+
+# ==================================================
+# القيم المقترحة التي ستُستخدم في الحفظ
+# ==================================================
+
+service_column = mapping.get(
+    "service_column"
+)
+
+section_column = mapping.get(
+    "section_column"
+)
+
+time_mode = mapping.get(
+    "time_mode"
+)
+
+if time_mode not in TIME_LABELS:
+    time_mode = "fixed"
+
+date_column = mapping.get(
+    "date_column"
+)
+
+combined_time_column = mapping.get(
+    "combined_time_column"
+)
+
+year_column = mapping.get(
+    "year_column"
+)
+
+period_column = mapping.get(
+    "period_column"
+)
+
+fixed_year = (
+    datetime.now().year
+    if time_mode == "fixed"
+    else None
+)
+
+fixed_period = (
+    FIRST_HALF
+    if time_mode == "fixed"
+    else None
+)
+
+factor_mapping = {
+    factor_name: factor_mapping_from_ai.get(
+        factor_name
+    )
+    for factor_name in factor_names
+}
+
+ces_columns = [
+    column
+    for column in mapping.get(
+        "ces_columns",
+        [],
+    )
+    if column in available_columns
+]
+
+nps_column = mapping.get(
+    "nps_column"
+)
+
+response_id_column = mapping.get(
+    "response_id_column"
+)
+
+participants_column = mapping.get(
+    "participants_column"
+)
+
+bps_column = mapping.get(
+    "bps_column"
+)
+
+
+# ==================================================
+# مراجعة وتعديل المطابقة
+# ==================================================
+
+with st.expander(
+    "مراجعة وتعديل المطابقة",
+    expanded=bool(gaps),
+):
+    st.caption(
+        "راجعي الاختيارات التالية. عدّلي فقط الحقل غير الصحيح."
+    )
+
+    service_column = optional_column(
+        "عمود اسم الخدمة *",
+        available_columns,
+        service_column,
+        key="review_service",
+    )
+
+    section_column = optional_column(
+        "عمود اسم القسم",
+        available_columns,
+        section_column,
+        key="review_section",
+    )
+
+    time_mode_options = list(TIME_LABELS.keys())
+
+    time_mode = st.selectbox(
+        "طريقة تحديد السنة والفترة",
+        options=time_mode_options,
+        index=time_mode_options.index(time_mode),
+        format_func=lambda value: TIME_LABELS[value],
+        key="review_time_mode",
+    )
+
+    date_column = None
+    combined_time_column = None
+    year_column = None
+    period_column = None
+    fixed_year = None
+    fixed_period = None
+
+    if time_mode == "date":
+        date_column = optional_column(
+            "عمود التاريخ *",
+            available_columns,
+            mapping.get("date_column"),
+            key="review_date",
+        )
+
+    elif time_mode == "combined":
+        combined_time_column = optional_column(
+            "عمود السنة والفترة *",
+            available_columns,
+            mapping.get("combined_time_column"),
+            key="review_combined",
+        )
+
+    elif time_mode == "separate":
+        year_col, period_col = st.columns(2)
+
+        with year_col:
+            year_column = optional_column(
+                "عمود السنة *",
+                available_columns,
+                mapping.get("year_column"),
+                key="review_year",
             )
 
-            repeated_factor_ces = (
-                factor_columns.intersection(
-                    ces_columns
-                )
+        with period_col:
+            period_column = optional_column(
+                "عمود الفترة *",
+                available_columns,
+                mapping.get("period_column"),
+                key="review_period",
             )
 
-            if repeated_factor_ces:
-                errors.append(
-                    "لا يمكن استخدام العمود نفسه كعامل CSAT "
-                    "وسؤال CES: "
-                    + "، ".join(
-                        sorted(repeated_factor_ces)
-                    )
-                )
+    else:
+        year_col, period_col = st.columns(2)
 
-            if (
-                nps_column is not None
-                and (
-                    nps_column in factor_columns
-                    or nps_column in ces_columns
-                )
-            ):
-                errors.append(
-                    "لا يمكن استخدام عمود NPS ضمن عوامل "
-                    "CSAT أو أسئلة CES."
-                )
+        with year_col:
+            fixed_year = st.number_input(
+                "السنة *",
+                min_value=2000,
+                max_value=2100,
+                value=datetime.now().year,
+                step=1,
+                key="review_fixed_year",
+            )
 
+        with period_col:
+            fixed_period = st.selectbox(
+                "الفترة *",
+                options=[FIRST_HALF, SECOND_HALF],
+                key="review_fixed_period",
+            )
+
+    st.markdown("#### عوامل CSAT")
+
+    factor_ui_columns = st.columns(2)
+
+    for index, factor_name in enumerate(factor_names):
+        with factor_ui_columns[index % 2]:
+            factor_mapping[factor_name] = optional_column(
+                factor_name,
+                available_columns,
+                factor_mapping.get(factor_name),
+                key=f"review_factor_{index}",
+            )
+
+    st.markdown("#### المؤشرات الأخرى")
+
+    ces_col, nps_col = st.columns(2)
+
+    with ces_col:
+        if data_mode == "raw":
+            ces_columns = st.multiselect(
+                "أعمدة CES",
+                options=available_columns,
+                default=ces_columns,
+                key="review_ces_raw",
+            )
         else:
-            errors.extend(
-                validate_factor_mapping(
-                    mapping=(
+            selected_ces = optional_column(
+                "عمود نتيجة CES",
+                available_columns,
+                ces_columns[0] if ces_columns else None,
+                key="review_ces_calculated",
+            )
+            ces_columns = [selected_ces] if selected_ces else []
+
+    with nps_col:
+        nps_column = optional_column(
+            "عمود إجابات NPS"
+            if data_mode == "raw"
+            else "عمود نتيجة NPS",
+            available_columns,
+            nps_column,
+            key="review_nps",
+        )
+
+    if data_mode == "raw":
+        response_id_column = optional_column(
+            "عمود رقم الاستجابة",
+            available_columns,
+            response_id_column,
+            key="review_response_id",
+        )
+    else:
+        bps_col, participants_col = st.columns(2)
+
+        with bps_col:
+            bps_column = optional_column(
+                "عمود نتيجة BPS",
+                available_columns,
+                bps_column,
+                key="review_bps",
+            )
+
+        with participants_col:
+            participants_column = optional_column(
+                "عمود عدد المشاركين",
+                available_columns,
+                participants_column,
+                key="review_participants",
+            )
+
+    warnings = mapping.get("warnings", [])
+
+    if warnings:
+        st.caption("ملاحظات النظام")
+        for warning in warnings:
+            st.write(f"• {warning}")
+
+
+# ==================================================
+# التعليقات والحفظ
+# ==================================================
+
+with st.container(border=True):
+    st.markdown(
+        '<div class="section-title">التعليقات والحفظ</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="section-description">'
+        'اختاري أعمدة التعليقات التي تريدين الاحتفاظ بها فقط.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    comment_columns = st.multiselect(
+        "أعمدة التعليقات",
+        options=available_columns,
+        default=[],
+        placeholder="اختاري الأعمدة النصية المطلوبة",
+    )
+
+    save_clicked = st.button(
+        "حفظ البيانات في قاعدة البيانات",
+        type="primary",
+        use_container_width=True,
+    )
+
+
+# ==================================================
+# التحقق والحفظ
+# ==================================================
+
+if save_clicked:
+    errors = validate_mapping(
+        service_column=service_column,
+        time_mode=time_mode,
+        date_column=date_column,
+        combined_time_column=combined_time_column,
+        year_column=year_column,
+        period_column=period_column,
+        factor_mapping=factor_mapping,
+        ces_columns=ces_columns,
+        nps_column=nps_column,
+        bps_column=bps_column,
+        data_mode=data_mode,
+    )
+
+    if errors:
+        for error in errors:
+            st.error(error)
+
+        st.stop()
+
+    try:
+        with st.spinner(
+            "جاري تجهيز الملف وحفظ البيانات..."
+        ):
+            processing_dataframe = (
+                dataframe.copy()
+            )
+
+            if time_mode == "combined":
+                parsed_values = (
+                    processing_dataframe[
+                        combined_time_column
+                    ]
+                    .apply(parse_year_period)
+                )
+
+                processing_dataframe[
+                    "__upload_year__"
+                ] = parsed_values.apply(
+                    lambda item: item[0]
+                )
+
+                processing_dataframe[
+                    "__upload_period__"
+                ] = parsed_values.apply(
+                    lambda item: item[1]
+                )
+
+                year_column = "__upload_year__"
+                period_column = "__upload_period__"
+
+            fixed_section = (
+                None
+                if section_column
+                else "غير محدد"
+            )
+
+            factor_column_mapping = {}
+            calculated_factor_column_mapping = {}
+            raw_ces_columns = []
+            raw_nps_column = None
+            calculated_ces_column = None
+            calculated_nps_column = None
+            calculated_bps_column = None
+
+            if data_mode == "raw":
+                factor_column_mapping = (
+                    factor_mapping
+                )
+
+                raw_ces_columns = ces_columns
+                raw_nps_column = nps_column
+
+            else:
+                calculated_factor_column_mapping = (
+                    factor_mapping
+                )
+
+                calculated_ces_column = (
+                    ces_columns[0]
+                    if ces_columns
+                    else None
+                )
+
+                calculated_nps_column = (
+                    nps_column
+                )
+
+                calculated_bps_column = (
+                    bps_column
+                )
+
+            prepared_records = (
+                prepare_uploaded_records(
+                    dataframe=processing_dataframe,
+                    data_mode=(
+                        RAW_DATA
+                        if data_mode == "raw"
+                        else CALCULATED_DATA
+                    ),
+                    service_column=service_column,
+                    section_column=section_column,
+                    fixed_section=fixed_section,
+                    response_id_column=(
+                        response_id_column
+                    ),
+                    date_column=date_column,
+                    year_column=year_column,
+                    period_column=period_column,
+                    fixed_year=fixed_year,
+                    fixed_period=fixed_period,
+                    factor_column_mapping=(
+                        factor_column_mapping
+                    ),
+                    ces_columns=raw_ces_columns,
+                    nps_column=raw_nps_column,
+                    calculated_factor_column_mapping=(
                         calculated_factor_column_mapping
                     ),
-                    factor_names=factor_names,
-                    field_name="نتائج عوامل CSAT",
+                    calculated_ces_column=(
+                        calculated_ces_column
+                    ),
+                    calculated_nps_column=(
+                        calculated_nps_column
+                    ),
+                    calculated_bps_column=(
+                        calculated_bps_column
+                    ),
+                    participants_column=(
+                        participants_column
+                    ),
+                    comment_columns=comment_columns,
                 )
             )
 
-            selected_columns = [
-                *calculated_factor_column_mapping.values(),
-                *[
-                    column
-                    for column in [
-                        calculated_ces_column,
-                        calculated_nps_column,
-                        calculated_bps_column,
-                    ]
-                    if column is not None
-                ],
-            ]
+            result = save_uploaded_records(
+                prepared_records
+            )
 
-            if len(selected_columns) != len(
-                set(selected_columns)
-            ):
-                errors.append(
-                    "لا يمكن استخدام العمود نفسه لأكثر من "
-                    "عامل أو مؤشر."
-                )
-
-        if errors:
-            for error_message in errors:
-                st.error(error_message)
+        if result["ok"]:
+            st.success(
+                "تم حفظ البيانات بنجاح. "
+                f"السجلات الجديدة: "
+                f"{result.get('inserted_records', 0)}، "
+                f"السجلات المحدثة: "
+                f"{result.get('updated_records', 0)}، "
+                f"نتائج العوامل: "
+                f"{result.get('saved_factors', 0)}، "
+                f"نتائج المؤشرات: "
+                f"{result.get('saved_indicators', 0)}."
+            )
 
         else:
-            try:
-                data_mode = (
-                    RAW_DATA
-                    if data_mode_label == RAW_DATA_LABEL
-                    else CALCULATED_DATA
-                )
+            for error in result.get(
+                "errors",
+                [],
+            ):
+                st.error(error)
 
-                with st.spinner(
-                    "جاري تجهيز الملف وحفظ البيانات..."
-                ):
-                    processing_dataframe = (
-                        dataframe.copy()
-                    )
-
-                    if time_mode == TIME_FROM_COMBINED:
-                        parsed_values = (
-                            processing_dataframe[
-                                combined_time_column
-                            ]
-                            .apply(parse_year_period)
-                        )
-
-                        processing_dataframe[
-                            "__upload_year__"
-                        ] = parsed_values.apply(
-                            lambda item: item[0]
-                        )
-
-                        processing_dataframe[
-                            "__upload_period__"
-                        ] = parsed_values.apply(
-                            lambda item: item[1]
-                        )
-
-                        year_column = "__upload_year__"
-                        period_column = (
-                            "__upload_period__"
-                        )
-
-                    prepared_records = (
-                        prepare_uploaded_records(
-                            dataframe=processing_dataframe,
-                            data_mode=data_mode,
-                            service_column=service_column,
-                            section_column=section_column,
-                            fixed_section=fixed_section,
-                            response_id_column=(
-                                response_id_column
-                            ),
-                            date_column=date_column,
-                            year_column=year_column,
-                            period_column=period_column,
-                            fixed_year=fixed_year,
-                            fixed_period=fixed_period,
-                            factor_column_mapping=(
-                                factor_column_mapping
-                            ),
-                            ces_columns=ces_columns,
-                            nps_column=nps_column,
-                            calculated_factor_column_mapping=(
-                                calculated_factor_column_mapping
-                            ),
-                            calculated_ces_column=(
-                                calculated_ces_column
-                            ),
-                            calculated_nps_column=(
-                                calculated_nps_column
-                            ),
-                            calculated_bps_column=(
-                                calculated_bps_column
-                            ),
-                            participants_column=(
-                                participants_column
-                            ),
-                            comment_columns=comment_columns,
-                        )
-                    )
-
-                    result = save_uploaded_records(
-                        prepared_records
-                    )
-
-                if result["ok"]:
-                    st.success(
-                        "تم حفظ البيانات في قاعدة البيانات بنجاح. "
-                        f"السجلات الجديدة: "
-                        f"{result.get('inserted_records', 0)}، "
-                        f"السجلات المحدثة: "
-                        f"{result.get('updated_records', 0)}، "
-                        f"نتائج العوامل المحفوظة: "
-                        f"{result.get('saved_factors', 0)}، "
-                        f"نتائج المؤشرات المحفوظة: "
-                        f"{result.get('saved_indicators', 0)}."
-                    )
-
-                else:
-                    for error_message in result.get(
-                        "errors",
-                        [],
-                    ):
-                        st.error(error_message)
-
-            except ValueError as error:
-                st.error(str(error))
-
-            except TypeError as error:
-                st.error(
-                    "ملفات data_upload.py وdata_service.py "
-                    "وentry_backend.py غير متوافقة. "
-                    f"التفاصيل: {error}"
-                )
-
-            except Exception as error:
-                st.error(
-                    "حدث خطأ أثناء معالجة الملف: "
-                    f"{error}"
-                )
+    except Exception as error:
+        st.error(
+            f"حدث خطأ أثناء معالجة الملف: {error}"
+        )
