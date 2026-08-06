@@ -32,7 +32,6 @@ def build_service_matrix(rows):
         s = row['ServiceName']
         ind = row['IndicatorName']
         p = row['PrevValue']
-        t = row['TargetValue']
         c = row['CurrentValue']
         
         key = (dept, s)
@@ -40,23 +39,23 @@ def build_service_matrix(rows):
             services_dict[key] = {
                 "Department": dept,
                 "Service": s,
-                "Prvious CSAT": "-", "Target CSAT": "-", "Current CSAT": "-",
-                "Prvious CES": "-", "Target CES": "-", "Current CES": "-",
-                "Prvious NPS": "-", "Target NPS": "-", "Current NPS": "-"
+                "Prvious CSAT": "-", "Target CSAT": format_val(85, is_csat=True), "Current CSAT": "-",
+                "Prvious CES": "-", "Target CES": format_val(76, is_csat=False), "Current CES": "-",
+                "Prvious NPS": "-", "Target NPS": format_val(69, is_csat=False), "Current NPS": "-"
             }
         
         ind_clean = str(ind).strip().upper()
         if "CSAT" in ind_clean:
             services_dict[key]["Prvious CSAT"] = format_val(p, is_csat=True)
-            services_dict[key]["Target CSAT"] = format_val(t, is_csat=True)
+            services_dict[key]["Target CSAT"] = format_val(85, is_csat=True)
             services_dict[key]["Current CSAT"] = format_val(c, is_csat=True)
         elif "CES" in ind_clean:
             services_dict[key]["Prvious CES"] = format_val(p, is_csat=False)
-            services_dict[key]["Target CES"] = format_val(t, is_csat=False)
+            services_dict[key]["Target CES"] = format_val(76, is_csat=False)
             services_dict[key]["Current CES"] = format_val(c, is_csat=False)
         elif "NPS" in ind_clean:
             services_dict[key]["Prvious NPS"] = format_val(p, is_csat=False)
-            services_dict[key]["Target NPS"] = format_val(t, is_csat=False)
+            services_dict[key]["Target NPS"] = format_val(69, is_csat=False)
             services_dict[key]["Current NPS"] = format_val(c, is_csat=False)
             
     return list(services_dict.values())
@@ -66,60 +65,95 @@ def generate_excel(period, periods_data):
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         selected_periods_list = list(periods_data.items())
         
-        # 1. شيت الملخص السنوي المجمع (Average)
+        # 1. شيت الملخص السنوي المجمع (حسب السنة الحالية والسنة التي تسبقها)
         if len(selected_periods_list) > 1:
-            combined_unique = {}
+            annual_rows = []
+            
+            # استخراج جميع الخدمات الفريدة المتاحة في البيانات
+            all_services = {}
             for p_name, rows in periods_data.items():
                 for row in rows:
-                    dept = row['DepartmentName']
-                    s = row['ServiceName']
-                    ind = row['IndicatorName']
-                    p, t, c = row['PrevValue'], row['TargetValue'], row['CurrentValue']
-                    
-                    key = (dept, s)
-                    if key not in combined_unique:
-                        combined_unique[key] = {
-                            "CSAT_p": [], "CSAT_t": [], "CSAT_c": [],
-                            "CES_p": [], "CES_t": [], "CES_c": [],
-                            "NPS_p": [], "NPS_t": [], "NPS_c": []
-                        }
-                    
-                    ind_clean = str(ind).strip().upper()
-                    try:
-                        val_p, val_t, val_c = float(p), float(t), float(c)
-                    except:
-                        continue
+                    key = (row['DepartmentName'], row['ServiceName'])
+                    if key not in all_services:
+                        all_services[key] = {"dept": row['DepartmentName'], "service": row['ServiceName']}
 
-                    if "CSAT" in ind_clean:
-                        combined_unique[key]["CSAT_p"].append(val_p)
-                        combined_unique[key]["CSAT_t"].append(val_t)
-                        combined_unique[key]["CSAT_c"].append(val_c)
-                    elif "CES" in ind_clean:
-                        combined_unique[key]["CES_p"].append(val_p)
-                        combined_unique[key]["CES_t"].append(val_t)
-                        combined_unique[key]["CES_c"].append(val_c)
-                    elif "NPS" in ind_clean:
-                        combined_unique[key]["NPS_p"].append(val_p)
-                        combined_unique[key]["NPS_t"].append(val_t)
-                        combined_unique[key]["NPS_c"].append(val_c)
-
-            annual_rows = []
-            for (dept, s), vals in combined_unique.items():
-                def avg(lst, is_c=False):
-                    if not lst:
-                        return "-"
-                    return format_val(sum(lst)/len(lst), is_csat=is_c)
-                
-                annual_rows.append({
-                    "Department": dept,
-                    "Service": s,
-                    "Prvious CSAT": avg(vals["CSAT_p"], True), "Target CSAT": avg(vals["CSAT_t"], True), "Current CSAT": avg(vals["CSAT_c"], True),
-                    "Prvious CES": avg(vals["CES_p"], False), "Target CES": avg(vals["CES_t"], False), "Current CES": avg(vals["CES_c"], False),
-                    "Prvious NPS": avg(vals["NPS_p"], False), "Target NPS": avg(vals["NPS_t"], False), "Current NPS": avg(vals["NPS_c"], False)
-                })
+            # استخراج السنوات الموجودة في الفترات المحددة للتقارير
+            years_in_data = set()
+            for p_name, rows in periods_data.items():
+                for row in rows:
+                    if 'Year' in row and row['Year']:
+                        years_in_data.add(str(row['Year']))
             
-            df_annual = pd.DataFrame(annual_rows)
-            df_annual.to_excel(writer, index=False, sheet_name='ملخص السنة')
+            if not years_in_data:
+                # محاولة استخراج السنة من اسم الفترة (مثل "2025 - النصف الأول")
+                for p_name, _ in periods_data.items():
+                    parts = p_name.split(" - ")
+                    if parts:
+                        years_in_data.add(parts[0].strip())
+
+            for year_str in sorted(years_in_data):
+                try:
+                    prev_year_str = str(int(year_str) - 1)
+                except:
+                    prev_year_str = ""
+
+                for (dept, s), info in all_services.items():
+                    # تجميع قيم السنة الحالية (النصف الأول + الثاني)
+                    curr_csat_vals, curr_ces_vals, curr_nps_vals = [], [], []
+                    # تجميع قيم السنة السابقة (النصف الأول + الثاني)
+                    prev_csat_vals, prev_ces_vals, prev_nps_vals = [], [], []
+
+                    for p_name, rows in periods_data.items():
+                        for row in rows:
+                            if row['DepartmentName'] == dept and row['ServiceName'] == s:
+                                row_year = str(row.get('Year', ''))
+                                if not row_year:
+                                    # استخراج السنة من اسم الفترة إذا لم تكن موجودة بالصف
+                                    if p_name.startswith(year_str):
+                                        row_year = year_str
+                                    elif prev_year_str and p_name.startswith(prev_year_str):
+                                        row_year = prev_year_str
+
+                                ind_clean = str(row['IndicatorName']).strip().upper()
+                                try:
+                                    c_val = float(row['CurrentValue'])
+                                except:
+                                    continue
+
+                                if row_year == year_str:
+                                    if "CSAT" in ind_clean: curr_csat_vals.append(c_val)
+                                    elif "CES" in ind_clean: curr_ces_vals.append(c_val)
+                                    elif "NPS" in ind_clean: curr_nps_vals.append(c_val)
+                                elif row_year == prev_year_str:
+                                    if "CSAT" in ind_clean: prev_csat_vals.append(c_val)
+                                    elif "CES" in ind_clean: prev_ces_vals.append(c_val)
+                                    elif "NPS" in ind_clean: prev_nps_vals.append(c_val)
+
+                    def avg(lst, is_c=False):
+                        if not lst:
+                            return "-"
+                        return format_val(sum(lst) / len(lst), is_csat=is_c)
+
+                    # إضافتها فقط إذا توفرت بيانات للسنة الحالية أو السابقة
+                    if curr_csat_vals or curr_ces_vals or curr_nps_vals:
+                        annual_rows.append({
+                            "Year": year_str,
+                            "Department": dept,
+                            "Service": s,
+                            "Prvious CSAT": avg(prev_csat_vals, True), 
+                            "Target CSAT": format_val(85, is_csat=True), 
+                            "Current CSAT": avg(curr_csat_vals, True),
+                            "Prvious CES": avg(prev_ces_vals, False), 
+                            "Target CES": format_val(76, is_csat=False), 
+                            "Current CES": avg(curr_ces_vals, False),
+                            "Prvious NPS": avg(prev_ces_vals, False), # أو تقييم NPS السابقة
+                            "Target NPS": format_val(69, is_csat=False), 
+                            "Current NPS": avg(curr_nps_vals, False)
+                        })
+
+            if annual_rows:
+                df_annual = pd.DataFrame(annual_rows)
+                df_annual.to_excel(writer, index=False, sheet_name='ملخص السنة')
 
         # 2. الشيتات المنفصلة لكل فترة
         for p_name, rows in periods_data.items():
@@ -128,7 +162,6 @@ def generate_excel(period, periods_data):
             safe_sheet_name = p_name.replace(" & ", "_")
             df_period.to_excel(writer, index=False, sheet_name=safe_sheet_name)
 
-    # إعادة فتح الملف عبر openpyxl لتلوين الصف الأول وتنسيقه في جميع الشيتات
     buffer.seek(0)
     wb = load_workbook(buffer)
     
@@ -201,70 +234,95 @@ def generate_pdf(period, periods_data):
     selected_periods_list = list(periods_data.keys())
 
     if len(selected_periods_list) > 1:
-        combined_unique = {}
+        annual_table_data = [headers]
+        
+        all_services = {}
         for p_name, rows in periods_data.items():
             for row in rows:
-                dept = row['DepartmentName']
-                s = row['ServiceName']
-                ind = row['IndicatorName']
-                p, t, c = row['PrevValue'], row['TargetValue'], row['CurrentValue']
-                
-                key = (dept, s)
-                if key not in combined_unique:
-                    combined_unique[key] = {"CSAT_p": [], "CSAT_t": [], "CSAT_c": [], "CES_p": [], "CES_t": [], "CES_c": [], "NPS_p": [], "NPS_t": [], "NPS_c": []}
-                
-                ind_clean = str(ind).strip().upper()
-                try:
-                    val_p, val_t, val_c = float(p), float(t), float(c)
-                except:
-                    continue
+                key = (row['DepartmentName'], row['ServiceName'])
+                if key not in all_services:
+                    all_services[key] = True
 
-                if "CSAT" in ind_clean:
-                    combined_unique[key]["CSAT_p"].append(val_p)
-                    combined_unique[key]["CSAT_t"].append(val_t)
-                    combined_unique[key]["CSAT_c"].append(val_c)
-                elif "CES" in ind_clean:
-                    combined_unique[key]["CES_p"].append(val_p)
-                    combined_unique[key]["CES_t"].append(val_t)
-                    combined_unique[key]["CES_c"].append(val_c)
-                elif "NPS" in ind_clean:
-                    combined_unique[key]["NPS_p"].append(val_p)
-                    combined_unique[key]["NPS_t"].append(val_t)
-                    combined_unique[key]["NPS_c"].append(val_c)
-
-        annual_table_data = [headers]
-        for (dept, s), vals in combined_unique.items():
-            def avg(lst, is_c=False):
-                if not lst:
-                    return "-"
-                return format_val(sum(lst)/len(lst), is_csat=is_c)
-            
-            row = [
-                avg(vals["NPS_c"], False), avg(vals["NPS_t"], False), avg(vals["NPS_p"], False),
-                avg(vals["CES_c"], False), avg(vals["CES_t"], False), avg(vals["CES_p"], False),
-                avg(vals["CSAT_c"], True), avg(vals["CSAT_t"], True), avg(vals["CSAT_p"], True),
-                str(s), str(dept)
-            ]
-            annual_table_data.append([process_arabic_text(cell) for cell in row])
-
-        t_annual = Table(annual_table_data, colWidths=col_widths)
-        t_annual.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#7b5ab8")),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#f4f6f9")),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ]))
+        years_in_data = set()
+        for p_name, rows in periods_data.items():
+            for row in rows:
+                if 'Year' in row and row['Year']:
+                    years_in_data.add(str(row['Year']))
         
-        annual_block = KeepTogether([
-            Paragraph(process_arabic_text("📊 جدول الملخص السنوي المجمع (المتوسطات):"), section_title_style),
-            t_annual
-        ])
-        elements.append(annual_block)
-        elements.append(Spacer(1, 12))
+        if not years_in_data:
+            for p_name, _ in periods_data.items():
+                parts = p_name.split(" - ")
+                if parts:
+                    years_in_data.add(parts[0].strip())
+
+        for year_str in sorted(years_in_data):
+            try:
+                prev_year_str = str(int(year_str) - 1)
+            except:
+                prev_year_str = ""
+
+            for (dept, s) in all_services.keys():
+                curr_csat_vals, curr_ces_vals, curr_nps_vals = [], [], []
+                prev_csat_vals, prev_ces_vals, prev_nps_vals = [], [], []
+
+                for p_name, rows in periods_data.items():
+                    for row in rows:
+                        if row['DepartmentName'] == dept and row['ServiceName'] == s:
+                            row_year = str(row.get('Year', ''))
+                            if not row_year:
+                                if p_name.startswith(year_str):
+                                    row_year = year_str
+                                elif prev_year_str and p_name.startswith(prev_year_str):
+                                    row_year = prev_year_str
+
+                            ind_clean = str(row['IndicatorName']).strip().upper()
+                            try:
+                                c_val = float(row['CurrentValue'])
+                            except:
+                                continue
+
+                            if row_year == year_str:
+                                if "CSAT" in ind_clean: curr_csat_vals.append(c_val)
+                                elif "CES" in ind_clean: curr_ces_vals.append(c_val)
+                                elif "NPS" in ind_clean: curr_nps_vals.append(c_val)
+                            elif row_year == prev_year_str:
+                                if "CSAT" in ind_clean: prev_csat_vals.append(c_val)
+                                elif "CES" in ind_clean: prev_ces_vals.append(c_val)
+                                elif "NPS" in ind_clean: prev_nps_vals.append(c_val)
+
+                def avg(lst, is_c=False):
+                    if not lst:
+                        return "-"
+                    return format_val(sum(lst) / len(lst), is_csat=is_c)
+
+                if curr_csat_vals or curr_ces_vals or curr_nps_vals:
+                    row_data = [
+                        avg(curr_nps_vals, False), format_val(69, is_csat=False), avg(prev_nps_vals, False),
+                        avg(curr_ces_vals, False), format_val(76, is_csat=False), avg(prev_ces_vals, False),
+                        avg(curr_csat_vals, True), format_val(85, is_csat=True), avg(prev_csat_vals, True),
+                        str(s), str(dept)
+                    ]
+                    annual_table_data.append([process_arabic_text(cell) for cell in row_data])
+
+        if len(annual_table_data) > 1:
+            t_annual = Table(annual_table_data, colWidths=col_widths)
+            t_annual.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#7b5ab8")),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, -1), font_name),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#f4f6f9")),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ]))
+            
+            annual_block = KeepTogether([
+                Paragraph(process_arabic_text("📊 جدول الملخص السنوي المجمع (بناءً على متوسط النصفين لكل سنة):"), section_title_style),
+                t_annual
+            ])
+            elements.append(annual_block)
+            elements.append(Spacer(1, 12))
 
     for p_name, rows in periods_data.items():
         matrix = build_service_matrix(rows)
@@ -291,7 +349,7 @@ def generate_pdf(period, periods_data):
         ]))
         
         period_block = KeepTogether([
-            Paragraph(process_arabic_text(f"📌 جدول بيانات الفترة: {p_name}"), section_title_style),
+            Paragraph(process_arabic_text(f" جدول بيانات الفترة: {p_name}"), section_title_style),
             t_period
         ])
         elements.append(period_block)
