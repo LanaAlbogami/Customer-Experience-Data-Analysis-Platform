@@ -1,5 +1,4 @@
 from pathlib import Path
-
 import streamlit as st
 from PIL import Image
 
@@ -18,7 +17,6 @@ def prepare_logo():
         return original_logo
 
     try:
-        # إعادة قص الشعار فقط إذا تغيرت الصورة الأصلية
         should_crop = (
             not cropped_logo.exists()
             or original_logo.stat().st_mtime
@@ -60,7 +58,6 @@ LOGO_PATH = prepare_logo()
 # ==================================================
 
 def setup():
-    # إعدادات التطبيق
     st.set_page_config(
         page_title="منصة تجربة العميل",
         page_icon=str(LOGO_PATH),
@@ -68,14 +65,12 @@ def setup():
         initial_sidebar_state="expanded",
     )
 
-    # الشعار أعلى القائمة الجانبية
     if LOGO_PATH.exists():
         st.logo(
             str(LOGO_PATH),
             size="large",
         )
 
-    # تصميم التطبيق والقائمة الجانبية
     st.markdown(
         """
         <style>
@@ -94,7 +89,6 @@ def setup():
             flex-direction: row !important;
         }
 
-        /* محتوى الصفحات */
         [data-testid="stMain"] {
             direction: rtl;
             text-align: right;
@@ -119,10 +113,6 @@ def setup():
             font-family: "Tajawal", sans-serif !important;
         }
 
-        /* =========================
-           القائمة الجانبية
-        ========================= */
-
         section[data-testid="stSidebar"] {
             background-color: #16213E !important;
             width: 320px !important;
@@ -142,10 +132,6 @@ def setup():
             padding: 18px 18px !important;
         }
 
-        /* =========================
-           الشعار
-        ========================= */
-
         section[data-testid="stSidebar"] [data-testid="stLogo"] {
             display: flex !important;
             justify-content: center !important;
@@ -162,10 +148,6 @@ def setup():
             max-height: 200px !important;
             object-fit: contain !important;
         }
-
-        /* =========================
-           قائمة الصفحات
-        ========================= */
 
         [data-testid="stSidebarNav"] {
             direction: rtl !important;
@@ -197,7 +179,6 @@ def setup():
             transition: background-color 0.2s ease !important;
         }
 
-        /* ترتيب الأيقونة والنص */
         [data-testid="stSidebarNav"] a > div {
             display: flex !important;
             flex-direction: row !important;
@@ -209,7 +190,6 @@ def setup():
             direction: rtl !important;
         }
 
-        /* نصوص القائمة */
         [data-testid="stSidebarNav"] a p {
             margin: 0 !important;
 
@@ -222,7 +202,6 @@ def setup():
             text-align: right !important;
         }
 
-        /* أيقونات القائمة */
         [data-testid="stSidebarNav"] span[data-testid="stIconMaterial"] {
             font-family: "Material Symbols Rounded" !important;
             font-size: 22px !important;
@@ -236,7 +215,6 @@ def setup():
             flex-shrink: 0 !important;
         }
 
-        /* الصفحة المحددة */
         [data-testid="stSidebarNav"] a[aria-current="page"] {
             background-color: #6C4AB6 !important;
             color: #FFFFFF !important;
@@ -247,7 +225,6 @@ def setup():
             color: #FFFFFF !important;
         }
 
-        /* عند تمرير الماوس */
         [data-testid="stSidebarNav"] a:hover {
             background-color: #22335C !important;
             color: #FFFFFF !important;
@@ -257,17 +234,10 @@ def setup():
             display: none !important;
         }
 
-        /* زر تصغير القائمة الجانبية */
-        [data-testid="stSidebarCollapseButton"] button {
-            color: #FFFFFF !important;
+        [data-testid="stSidebarCollapseButton"] {
+            display: none !important;
         }
 
-        [data-testid="stSidebarCollapseButton"] svg {
-            color: #FFFFFF !important;
-            fill: #FFFFFF !important;
-        }
-
-        /* المحافظة على خط الأيقونات */
         span[data-testid="stIconMaterial"],
         .material-symbols-rounded {
             font-family: "Material Symbols Rounded" !important;
@@ -280,8 +250,6 @@ def setup():
         footer {
             visibility: hidden;
         }
-<<<<<<< Updated upstream
-=======
 
         div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
             text-align: right !important;
@@ -306,7 +274,6 @@ def setup():
             color: #000000 !important;
             border-color: rgba(49, 51, 63, 0.4) !important;
         }
->>>>>>> Stashed changes
         </style>
         """,
         unsafe_allow_html=True,
@@ -318,11 +285,6 @@ def setup():
 # ==================================================
 
 def _sidebar_mode_toggle():
-    """
-    OFF = الجهات
-    ON = الأفراد
-    """
-
     with st.sidebar:
         is_individuals = st.toggle(
             "وضع الأفراد",
@@ -342,8 +304,6 @@ def _sidebar_mode_toggle():
 
 
 # ==================================================
-<<<<<<< Updated upstream
-=======
 # نافذة كلمة المرور لحماية صفحة التعديل
 # ==================================================
 CORRECT_PASSWORD = "123"  # كلمة السر
@@ -375,7 +335,6 @@ def password_dialog():
 
 
 # ==================================================
->>>>>>> Stashed changes
 # تعريف صفحات التطبيق
 # ==================================================
 
@@ -432,8 +391,6 @@ def run_app():
         expanded=True,
     )
 
-<<<<<<< Updated upstream
-=======
     if page.title != "التعديل":
         st.session_state["authenticated_management"] = False
 
@@ -442,7 +399,6 @@ def run_app():
             password_dialog()
             st.stop()
 
->>>>>>> Stashed changes
     page.run()
 
 
