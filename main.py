@@ -18,10 +18,20 @@ styling.
 import base64
 from pathlib import Path
 
+import sys
+
 import streamlit as st
 
 import app_mode
 from style import COLORS   # Reuse the shared palette so the app stays consistent.
+
+
+# صفحات الأفراد موجودة داخل مجلد Individuals/، وبعض ملفاتها تستورد
+# ملفاتها المجاورة باسم مباشر (مثل data_service_individuals). إضافة المجلد
+# إلى مسار البحث تخلي هذي الاستيرادات تشتغل مهما كان مجلد التشغيل.
+_INDIVIDUALS_DIR = str(Path(__file__).parent / "Individuals")
+if _INDIVIDUALS_DIR not in sys.path:
+    sys.path.insert(0, _INDIVIDUALS_DIR)
 
 
 # Landing-page colours.

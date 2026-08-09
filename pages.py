@@ -338,7 +338,8 @@ def password_dialog():
 # تعريف صفحات التطبيق
 # ==================================================
 
-def _pages_for(mode):
+# --- صفحات وضع الجهات (مكتملة) ---
+def _departments_pages():
     return [
         st.Page(
             "Dashboard.py",
@@ -372,6 +373,31 @@ def _pages_for(mode):
             icon=":material/edit:",
         ),
     ]
+
+
+# --- صفحات وضع الأفراد (قيد الإكمال) ---
+# نضيف هنا فقط الصفحات الجاهزة. كل ما تجهز صفحة جديدة للأفراد
+# نضيف لها سطر st.Page جديد في هذي القائمة.
+def _individuals_pages():
+    return [
+        st.Page(
+            "Individuals/Dashboard_individuals.py",
+            title="لوحة المعلومات",
+            icon=":material/dashboard:",
+            default=True,
+        ),
+        st.Page(
+            "Individuals/data_upload_individuals.py",
+            title="رفع ملف Excel",
+            icon=":material/upload_file:",
+        ),
+    ]
+
+
+def _pages_for(mode):
+    if mode == "individuals":
+        return _individuals_pages()
+    return _departments_pages()
 
 
 # ==================================================
