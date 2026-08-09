@@ -1,13 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-comments_page.py
-----------------
-تحليل التعليقات الحقيقية المخزنة في قاعدة بيانات الجهات.
-
-مصدر التعليقات:
-    MeasurementRecords.Review
-"""
-
 from __future__ import annotations
 
 import html
@@ -21,26 +12,17 @@ from openai import OpenAI
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database.connection import SessionLocal
-from database.models import (
-    MeasurementRecord,
-    Section,
-    Service,
+from database_individuals.connection import SessionLocal
+from database_individuals.models import (
+    IndividualMeasurementRecord,
+    IndividualProfile,
 )
-
-
-# الإعدادات
 
 load_dotenv()
 
 API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
-
-# لمنع إرسال عدد ضخم جدًا من التعليقات في طلب واحد.
 MAX_COMMENTS_PER_ANALYSIS = 500
-
-
-# التصميم
 
 st.markdown(
     """
@@ -183,24 +165,6 @@ st.markdown(
         font-weight: 700 !important;
     }
 
-    [data-testid="stMain"] div.stButton > button:hover {
-        background-color: #5B3DA5 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-    }
-
-    [data-testid="stMain"] div.stButton > button:focus {
-        box-shadow: none !important;
-        color: #FFFFFF !important;
-    }
-
-    [data-testid="stMain"] [data-testid="stAlert"],
-    [data-testid="stMain"] [data-testid="stCaptionContainer"] {
-        direction: rtl;
-        text-align: right;
-        font-family: 'Tajawal', sans-serif !important;
-    }
-
     div[data-baseweb="select"] > div,
     div[data-baseweb="select"] span {
         direction: rtl;
@@ -227,9 +191,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# تنظيف التعليقات
-
 IGNORED_COMMENTS = {
     "",
     "لا يوجد تعليق",
@@ -245,17 +206,11 @@ IGNORED_COMMENTS = {
 
 
 def clean_comment(value):
-    """تنظيف سطر تعليق واحد واستبعاد النصوص غير المفيدة."""
     if value is None:
         return None
 
     comment = str(value).strip()
-
-    comment = re.sub(
-        r"^\s*[-•]\s*",
-        "",
-        comment,
-    ).strip()
+    comment = re.sub(r"^\s*[-•]\s*", "", comment).strip()
 
     if not comment:
         return None
@@ -266,55 +221,36 @@ def clean_comment(value):
     return comment
 
 
-# قراءة التعليقات من قاعدة البيانات
-
 @st.cache_data(ttl=60)
 def fetch_comments_from_db():
-    """
-    قراءة التعليقات المحفوظة في MeasurementRecords.Review.
-
-    إذا كان Review يحتوي عدة تعليقات مفصولة بأسطر،
-    يتحول كل سطر إلى تعليق مستقل.
-    """
     with SessionLocal() as session:
         rows = session.execute(
             select(
-                MeasurementRecord.review,
-                MeasurementRecord.year,
-                MeasurementRecord.period,
-                Section.section_name,
-                Service.service_name,
+                IndividualMeasurementRecord.review,
+                IndividualMeasurementRecord.year,
+                IndividualMeasurementRecord.period,
+                IndividualProfile.gender,
+                IndividualProfile.age_group,
+                IndividualProfile.region,
             )
             .join(
-                Service,
-                MeasurementRecord.service_id
-                == Service.service_id,
-            )
-            .join(
-                Section,
-                Service.section_id
-                == Section.section_id,
+                IndividualProfile,
+                IndividualMeasurementRecord.individual_id
+                == IndividualProfile.individual_id,
             )
             .where(
-                MeasurementRecord.review.is_not(None),
-                MeasurementRecord.review != "",
+                IndividualMeasurementRecord.review.is_not(None),
+                IndividualMeasurementRecord.review != "",
             )
             .order_by(
-                MeasurementRecord.year.desc(),
-                Section.section_name,
-                Service.service_name,
+                IndividualMeasurementRecord.year.desc(),
+                IndividualMeasurementRecord.period,
             )
         ).all()
 
     comments = []
 
-    for (
-        review,
-        year,
-        period,
-        section_name,
-        service_name,
-    ) in rows:
+    for review, year, period, gender, age_group, region in rows:
         for line in str(review).splitlines():
             comment = clean_comment(line)
 
@@ -323,8 +259,9 @@ def fetch_comments_from_db():
 
             comments.append(
                 {
-                    "section": section_name,
-                    "service": service_name,
+                    "gender": gender or "غير محدد",
+                    "age_group": age_group or "غير محدد",
+                    "region": region or "غير محدد",
                     "year": int(year),
                     "period": period,
                     "comment": comment,
@@ -333,8 +270,6 @@ def fetch_comments_from_db():
 
     return comments
 
-
-# شكل استجابة OpenAI
 
 class Reason(BaseModel):
     name: str
@@ -351,16 +286,10 @@ class AnalysisResult(BaseModel):
     smart_recommendation: str
 
 
-# إصلاح مراجع Pydantic المؤجلة بسبب:
-# from __future__ import annotations
 AnalysisResult.model_rebuild(
-    _types_namespace={
-        "Reason": Reason,
-    }
+    _types_namespace={"Reason": Reason}
 )
 
-
-# التحليل
 
 def analyze_comments(data):
     if not API_KEY:
@@ -375,21 +304,17 @@ def analyze_comments(data):
 
     records = "\n".join(
         (
-            f"{index}. القسم: {item['section']} | "
-            f"الخدمة: {item['service']} | "
+            f"{index}. الجنس: {item['gender']} | "
+            f"الفئة العمرية: {item['age_group']} | "
+            f"المنطقة: {item['region']} | "
             f"السنة: {item['year']} | "
             f"الفترة: {item['period']} | "
             f"التعليق: {item['comment']}"
         )
-        for index, item in enumerate(
-            data,
-            start=1,
-        )
+        for index, item in enumerate(data, start=1)
     )
 
-    client = OpenAI(
-        api_key=API_KEY
-    )
+    client = OpenAI(api_key=API_KEY)
 
     response = client.chat.completions.parse(
         model=MODEL,
@@ -397,44 +322,39 @@ def analyze_comments(data):
             {
                 "role": "system",
                 "content": """
-أنت متخصص في تحليل تعليقات تجربة العملاء باللغة العربية.
+أنت متخصص في تحليل تعليقات تجربة العملاء للأفراد باللغة العربية.
 
-لا يوجد تقييم رقمي منفصل لكل تعليق، لذلك صنف التعليق من معناه فقط:
+صنف كل تعليق مرة واحدة فقط:
 - رضا: إشادة أو تجربة إيجابية واضحة.
 - عدم رضا: مشكلة أو صعوبة أو تأخير أو شكوى واضحة.
 - محايد: لا يحتوي رضا أو مشكلة واضحة.
 
 القواعد:
-1. صنّف كل تعليق مرة واحدة فقط إلى رضا أو عدم رضا أو محايد.
-2. احسب:
-   - satisfaction_count: عدد التعليقات المصنفة رضا.
-   - dissatisfaction_count: عدد التعليقات المصنفة عدم رضا.
-   - neutral_count: عدد التعليقات المحايدة.
-3. استخرج سببًا رئيسيًا واحدًا فقط من كل تعليق المصنف رضا أو عدم رضا.
-4. اجمع الأسباب المتشابهة تحت اسم عربي واضح ومختصر.
-5. رتب الأسباب تنازليًا حسب العدد، وأرجع أعلى 5 أسباب فقط لكل قسم.
-6. يجب أن يساوي مجموع أعداد أسباب الرضا satisfaction_count.
-7. يجب أن يساوي مجموع أعداد أسباب عدم الرضا dissatisfaction_count.
-8. لا تخترع سببًا غير موجود.
-9. لا تعتبر اسم القسم أو الخدمة سببًا.
-10. لا تكرر السبب نفسه بصيغ مختلفة.
+1. احسب satisfaction_count و dissatisfaction_count و neutral_count.
+2. استخرج سببًا رئيسيًا واحدًا فقط من كل تعليق رضا أو عدم رضا.
+3. اجمع الأسباب المتشابهة تحت اسم عربي واضح ومختصر.
+4. رتب الأسباب تنازليًا حسب العدد، وأرجع أعلى 5 أسباب فقط لكل قسم.
+5. يجب أن يساوي مجموع أعداد أسباب الرضا satisfaction_count.
+6. يجب أن يساوي مجموع أعداد أسباب عدم الرضا dissatisfaction_count.
+7. لا تخترع سببًا غير موجود.
+8. لا تعتبر الجنس أو العمر أو المنطقة أو السنة أو الفترة سببًا.
+9. لا تكرر السبب نفسه بصيغ مختلفة.
 
-أمثلة مناسبة للأسباب:
-المشكلات التقنية، سرعة إنجاز الخدمة، سهولة الاستخدام،
-وضوح الإجراءات، تسجيل الدخول والوصول،
-جودة الدعم وخدمة العملاء، استقرار الخدمة،
-توفر المعلومات، تأخر تنفيذ الطلب.
+أمثلة:
+سهولة الاستخدام، وضوح الإجراءات، سرعة تنفيذ الخدمة،
+مشكلات تسجيل الدخول، توفر الخدمة، جودة الدعم الفني،
+وضوح الإشعارات، سهولة التسجيل، المشكلات التقنية.
 
-اكتب حقل summary كخلاصة قصيرة جدًا تتضمن:
+اكتب summary كخلاصة قصيرة جدًا:
 - أبرز نقطة قوة.
 - أبرز مشكلة.
-لا تتجاوز 60 كلمة.
+ولا تتجاوز 60 كلمة.
 
-واكتب حقل smart_recommendation كتوصية عملية مستقلة تتضمن:
+واكتب smart_recommendation كتوصية عملية مستقلة:
 - الإجراء الأهم المطلوب.
 - ما الذي يجب تحسينه أولًا.
 - نتيجة متوقعة مختصرة.
-لا تتجاوز 70 كلمة.
+ولا تتجاوز 70 كلمة.
 """,
             },
             {
@@ -445,10 +365,7 @@ def analyze_comments(data):
         response_format=AnalysisResult,
     )
 
-    result = (
-        response.choices[0]
-        .message.parsed
-    )
+    result = response.choices[0].message.parsed
 
     if result is None:
         raise ValueError(
@@ -458,13 +375,7 @@ def analyze_comments(data):
     return result
 
 
-# عرض النتائج
-
-def show_reasons(
-    title,
-    reasons,
-    badge_class,
-):
+def show_reasons(title, reasons, badge_class):
     top_reasons = sorted(
         reasons,
         key=lambda item: item.count,
@@ -483,7 +394,6 @@ def show_reasons(
             )
             for item in top_reasons
         )
-
     else:
         rows = (
             '<p class="feedback-text">'
@@ -502,65 +412,60 @@ def show_reasons(
     )
 
 
-# عنوان الصفحة
-
 st.markdown(
-    '<div class="comments-title">تحليل تعليقات العملاء</div>',
+    '<div class="comments-title">تحليل تعليقات الأفراد</div>',
     unsafe_allow_html=True,
 )
 
 st.markdown(
     (
         '<div class="comments-description">'
-        'تحليل التعليقات المحفوظة في قاعدة البيانات '
+        'تحليل التعليقات الفعلية المحفوظة في قاعدة بيانات الأفراد '
         'واستخراج أسباب الرضا وعدم الرضا'
         '</div>'
     ),
     unsafe_allow_html=True,
 )
 
-
-# جلب البيانات
-
 try:
     comments_data = fetch_comments_from_db()
-
 except Exception as error:
     st.error(
-        f"تعذر قراءة التعليقات من قاعدة البيانات: {error}"
+        f"تعذر قراءة تعليقات الأفراد من قاعدة البيانات: {error}"
     )
     st.stop()
-
 
 if not comments_data:
     st.warning(
-        "لا توجد تعليقات محفوظة في قاعدة بيانات الجهات."
+        "لا توجد تعليقات محفوظة في قاعدة بيانات الأفراد."
     )
     st.stop()
 
 
-# الفلاتر
+all_genders = sorted(
+    {item["gender"] for item in comments_data}
+)
 
-all_sections = sorted(
-    {
-        item["section"]
-        for item in comments_data
-    }
+all_age_groups = sorted(
+    {item["age_group"] for item in comments_data}
+)
+
+all_regions = sorted(
+    {item["region"] for item in comments_data}
 )
 
 all_years = sorted(
-    {
-        item["year"]
-        for item in comments_data
-    },
+    {item["year"] for item in comments_data},
     reverse=True,
 )
 
 all_periods = [
     period
     for period in [
-        "النصف الأول",
-        "النصف الثاني",
+        "الربع الأول",
+        "الربع الثاني",
+        "الربع الثالث",
+        "الربع الرابع",
     ]
     if any(
         item["period"] == period
@@ -569,55 +474,36 @@ all_periods = [
 ]
 
 
-filter1, filter2, filter3, filter4 = st.columns(4)
+filter1, filter2, filter3, filter4, filter5 = st.columns(5)
 
 with filter1:
-    selected_section = st.selectbox(
-        "القسم",
-        options=[
-            "كل الأقسام",
-            *all_sections,
-        ],
+    selected_gender = st.selectbox(
+        "الجنس",
+        options=["الكل", *all_genders],
     )
 
-
-available_services = sorted(
-    {
-        item["service"]
-        for item in comments_data
-        if (
-            selected_section == "كل الأقسام"
-            or item["section"] == selected_section
-        )
-    }
-)
-
-
 with filter2:
-    selected_service = st.selectbox(
-        "الخدمة",
-        options=[
-            "كل الخدمات",
-            *available_services,
-        ],
+    selected_age_group = st.selectbox(
+        "الفئة العمرية",
+        options=["الكل", *all_age_groups],
     )
 
 with filter3:
-    selected_year = st.selectbox(
-        "السنة",
-        options=[
-            "كل السنوات",
-            *all_years,
-        ],
+    selected_region = st.selectbox(
+        "المنطقة",
+        options=["الكل", *all_regions],
     )
 
 with filter4:
+    selected_year = st.selectbox(
+        "السنة",
+        options=["كل السنوات", *all_years],
+    )
+
+with filter5:
     selected_period = st.selectbox(
         "الفترة",
-        options=[
-            "كل الفترات",
-            *all_periods,
-        ],
+        options=["كل الفترات", *all_periods],
     )
 
 
@@ -626,12 +512,16 @@ filtered_data = [
     for item in comments_data
     if (
         (
-            selected_section == "كل الأقسام"
-            or item["section"] == selected_section
+            selected_gender == "الكل"
+            or item["gender"] == selected_gender
         )
         and (
-            selected_service == "كل الخدمات"
-            or item["service"] == selected_service
+            selected_age_group == "الكل"
+            or item["age_group"] == selected_age_group
+        )
+        and (
+            selected_region == "الكل"
+            or item["region"] == selected_region
         )
         and (
             selected_year == "كل السنوات"
@@ -645,11 +535,7 @@ filtered_data = [
 ]
 
 
-# العدد والمعاينة
-
-info_col1, info_col2 = st.columns(
-    [1, 2]
-)
+info_col1, info_col2 = st.columns([1, 2])
 
 with info_col1:
     st.metric(
@@ -663,20 +549,18 @@ with info_col2:
         expanded=False,
     ):
         st.dataframe(
-            pd.DataFrame(
-                filtered_data
-            ),
+            pd.DataFrame(filtered_data),
             use_container_width=True,
             hide_index=True,
             column_config={
-                "section": "القسم",
-                "service": "الخدمة",
+                "gender": "الجنس",
+                "age_group": "الفئة العمرية",
+                "region": "المنطقة",
                 "year": "السنة",
                 "period": "الفترة",
                 "comment": "التعليق",
             },
         )
-
 
 if not filtered_data:
     st.info(
@@ -685,25 +569,16 @@ if not filtered_data:
     st.stop()
 
 
-analysis_data = filtered_data[
-    :MAX_COMMENTS_PER_ANALYSIS
-]
+analysis_data = filtered_data[:MAX_COMMENTS_PER_ANALYSIS]
 
-if (
-    len(filtered_data)
-    > MAX_COMMENTS_PER_ANALYSIS
-):
+if len(filtered_data) > MAX_COMMENTS_PER_ANALYSIS:
     st.warning(
         "عدد التعليقات كبير؛ سيتم تحليل أول "
         f"{MAX_COMMENTS_PER_ANALYSIS} تعليق فقط."
     )
 
 
-# زر التحليل
-
-_, center, _ = st.columns(
-    [1, 1.5, 1]
-)
+_, center, _ = st.columns([1, 1.5, 1])
 
 with center:
     analyze_button = st.button(
@@ -711,8 +586,6 @@ with center:
         use_container_width=True,
     )
 
-
-# تنفيذ التحليل
 
 if analyze_button:
     with st.spinner(
@@ -758,7 +631,7 @@ if analyze_button:
                 )
 
             st.caption(
-                "الأرقام تمثل عدد التعليقات، وليست بالضرورة عدد أشخاص مختلفين."
+                "الأرقام تمثل عدد التعليقات، وليست بالضرورة عدد أفراد مختلفين."
             )
 
             col_right, col_left = st.columns(
@@ -828,3 +701,7 @@ if analyze_button:
             )
 
 
+st.caption(
+    "مصدر البيانات: التعليقات المحفوظة في "
+    "IndividualMeasurementRecords.Review"
+)
