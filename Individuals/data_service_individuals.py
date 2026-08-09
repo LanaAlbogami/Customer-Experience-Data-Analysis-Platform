@@ -151,6 +151,23 @@ def calculate_nps_score(ratings):
     return round(100 * (promoters - detractors) / total, 2)
 
 
+def calculate_ces_score(ratings):
+    """
+    CES = % الإجابات السهلة (4-5) − % الإجابات الصعبة (1-2)، على مقياس 1-5.
+    يرجع None لو ما فيه أي تقييمات.
+    """
+    valid_ratings = [r for r in ratings if r is not None]
+
+    if not valid_ratings:
+        return None
+
+    total = len(valid_ratings)
+    easy = sum(1 for r in valid_ratings if r >= 4)
+    difficult = sum(1 for r in valid_ratings if r <= 2)
+
+    return round(100 * (easy - difficult) / total, 2)
+
+
 def aggregate_records(records, factor_order, indicator_names):
     """
     يحسب من قائمة سجلات خام (مفلترة مسبقًا حسب الفلاتر):
@@ -199,6 +216,8 @@ def aggregate_records(records, factor_order, indicator_names):
 
         if indicator_name.upper() == "NPS":
             value = calculate_nps_score(ratings)
+        elif indicator_name.upper() == "CES":
+            value = calculate_ces_score(ratings)
         else:
             value = calculate_top2box_percent(ratings)
 
@@ -207,4 +226,4 @@ def aggregate_records(records, factor_order, indicator_names):
             "participants_count": len(ratings),
         }
 
-    return result 
+    return result

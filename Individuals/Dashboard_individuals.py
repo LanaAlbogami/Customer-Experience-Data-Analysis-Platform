@@ -21,7 +21,7 @@ ROLE_COLORS = {
     "previous": "#1F3A5F",
 }
 
-DEFAULT_TARGETS = {"csat": 85, "nps": 76}
+DEFAULT_TARGETS = {"csat": 85, "nps": 76, "ces": 69}
 
 # ---- Force RTL + الأسلوب العام (نفس أسلوب داشبورد الجهات) ----
 st.markdown("""
@@ -285,7 +285,10 @@ st.caption(f"عدد الردود المطابقة للاختيار الحالي:
 
 st.subheader("المؤشرات الرئيسية")
 
-kpi_cols = st.columns(2) if "NPS" in indicator_names else st.columns(1)
+# نبني قائمة المؤشرات المعروضة ديناميكيًا: CSAT دايمًا موجود،
+# وأي مؤشر ثاني (NPS, CES...) يُضاف تلقائيًا لو موجود بقاعدة البيانات.
+extra_indicators = [name for name in indicator_names if name.upper() in ("NPS", "CES")]
+kpi_cols = st.columns(1 + len(extra_indicators))
 
 
 def donut_svg(fill_percent, display_text, color, size=170, stroke=17, font_size=30, track_color="#DDE1EA"):
@@ -352,12 +355,17 @@ kpi_block(
     kind="percent",
 )
 
-if "NPS" in indicator_names and len(kpi_cols) > 1:
+INDICATOR_LABELS = {
+    "NPS": "NPS - التوصية بالتطبيق",
+    "CES": "CES - جهد الفرد",
+}
+
+for i, indicator_name in enumerate(extra_indicators, start=1):
     kpi_block(
-        kpi_cols[1],
-        "NPS - التوصية بالتطبيق",
-        agg["indicators"].get("NPS", {}).get("current_value"),
-        _target_or_default("nps", None),
+        kpi_cols[i],
+        INDICATOR_LABELS.get(indicator_name, indicator_name),
+        agg["indicators"].get(indicator_name, {}).get("current_value"),
+        _target_or_default(indicator_name.lower(), None),
         kind="range",
     )
 
