@@ -280,6 +280,33 @@ def setup():
         footer {
             visibility: hidden;
         }
+<<<<<<< Updated upstream
+=======
+
+        div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
+            text-align: right !important;
+            direction: rtl !important;
+        }
+
+        div[data-testid="stDialog"] [data-baseweb="input"] button,
+        div[data-testid="stDialog"] input::-webkit-contacts-auto-fill-button,
+        div[data-testid="stDialog"] input::-webkit-credentials-auto-fill-button {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        div[data-testid="stDialog"] button:not([kind="header"]):not([data-testid="baseButton-header"]) {
+            background-color: #FFFFFF !important;
+            color: #333333 !important;
+            border: 1px solid rgba(49, 51, 63, 0.2) !important;
+        }
+        
+        div[data-testid="stDialog"] button:not([kind="header"]):not([data-testid="baseButton-header"]):hover {
+            background-color: #F0F2F6 !important;
+            color: #000000 !important;
+            border-color: rgba(49, 51, 63, 0.4) !important;
+        }
+>>>>>>> Stashed changes
         </style>
         """,
         unsafe_allow_html=True,
@@ -315,6 +342,40 @@ def _sidebar_mode_toggle():
 
 
 # ==================================================
+<<<<<<< Updated upstream
+=======
+# نافذة كلمة المرور لحماية صفحة التعديل
+# ==================================================
+CORRECT_PASSWORD = "123"  # كلمة السر
+
+@st.dialog("تسجيل الدخول لصفحة التعديل")
+def password_dialog():
+    st.markdown('<div style="text-align: right; direction: rtl; margin-bottom: 10px;">الرجاء إدخال كلمة السر للوصول إلى صفحة التعديل:</div>', unsafe_allow_html=True)
+    
+    password_input = st.text_input(
+        "كلمة السر", 
+        type="default", 
+        label_visibility="collapsed", 
+        placeholder="أدخل كلمة السر هنا..."
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    if col1.button("دخول", key="submit_pwd", use_container_width=True):
+        if password_input == CORRECT_PASSWORD:
+            st.session_state["authenticated_management"] = True
+            st.success("تم تسجيل الدخول بنجاح!")
+            st.rerun()
+        else:
+            st.error("كلمة السر غير صحيحة، حاول مرة أخرى.")
+            
+    if col2.button("إلغاء", key="cancel_pwd", use_container_width=True):
+        st.session_state["authenticated_management"] = False
+        st.switch_page("Dashboard.py")
+
+
+# ==================================================
+>>>>>>> Stashed changes
 # تعريف صفحات التطبيق
 # ==================================================
 
@@ -371,6 +432,17 @@ def run_app():
         expanded=True,
     )
 
+<<<<<<< Updated upstream
+=======
+    if page.title != "التعديل":
+        st.session_state["authenticated_management"] = False
+
+    if page.title == "التعديل":
+        if not st.session_state.get("authenticated_management", False):
+            password_dialog()
+            st.stop()
+
+>>>>>>> Stashed changes
     page.run()
 
 
