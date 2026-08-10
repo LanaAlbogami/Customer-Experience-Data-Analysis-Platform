@@ -212,7 +212,7 @@ def setup():
             direction: ltr !important;
             text-align: center !important;
 
-            flex-shrink: 0 !important;
+            shrink: 0 !important;
         }
 
         [data-testid="stSidebarNav"] a[aria-current="page"] {
@@ -340,7 +340,7 @@ def setup():
 
 
 # ==================================================
-# زر التبديل بين الجهات والأفراد
+# زر التبديل بين الجهات والأفراد (تم تصحيح المفتاح هنا)
 # ==================================================
 
 def _sidebar_mode_toggle():
@@ -351,12 +351,20 @@ def _sidebar_mode_toggle():
     # نغلّف الزر داخل حاوية لها مفتاح ثابت (key)، فيعطيها ستريملت
     # كلاس ثابت اسمه st-key-mode_switch_box نقدر نثبّته وننسّقه من الـCSS.
     with st.sidebar:
+<<<<<<< Updated upstream
         with st.container(key="mode_switch_box"):
             is_individuals = st.toggle(
                 label,
                 value=current_is_individuals,
                 key="mode_switch",
             )
+=======
+        is_individuals = st.toggle(
+            "وضع الأفراد",
+            value=app_mode.is_individuals(),
+            key="unique_mode_switch_key_2026",
+        )
+>>>>>>> Stashed changes
 
     new_mode = (
         "individuals"
@@ -441,9 +449,7 @@ def _departments_pages():
     ]
 
 
-# --- صفحات وضع الأفراد (قيد الإكمال) ---
-# نضيف هنا فقط الصفحات الجاهزة. كل ما تجهز صفحة جديدة للأفراد
-# نضيف لها سطر st.Page جديد في هذي القائمة.
+# --- صفحات وضع الأفراد ---
 def _individuals_pages():
     return [
         st.Page(
@@ -457,11 +463,18 @@ def _individuals_pages():
             title="رفع ملف Excel",
             icon=":material/upload_file:",
         ),
+<<<<<<< Updated upstream
 
         st.Page(
             "Individuals/comments_page_individuals.py",
             title="تحليل تعليقات العملاء",
             icon=":material/chat_bubble_outline:",
+=======
+        st.Page(
+            "Individuals/reports_individuals_page.py",
+            title="التقارير",
+            icon=":material/analytics:",
+>>>>>>> Stashed changes
         ),
     ]
 
