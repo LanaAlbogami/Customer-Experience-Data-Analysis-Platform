@@ -274,6 +274,65 @@ def setup():
             color: #000000 !important;
             border-color: rgba(49, 51, 63, 0.4) !important;
         }
+
+        /* ============================================
+           زر التبديل بين الجهات والأفراد (ثابت أسفل السايدبار)
+           ============================================ */
+
+        /* نخلي السايدبار مرجع للتموضع، عشان نثبّت الزر أسفله. */
+        section[data-testid="stSidebar"] > div {
+            position: relative !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+            /* مساحة سفلية تمنع تداخل آخر عنصر في القائمة مع الزر الثابت */
+            padding-bottom: 92px !important;
+        }
+
+        /* حاوية الزر: مثبّتة أسفل السايدبار بثبات، وفوقها خط فاصل خفيف.
+           التموضع absolute يخليها ثابتة مكانها ولا تتحرك مع تغيّر الصفحات. */
+        section[data-testid="stSidebar"] .st-key-mode_switch_box {
+            position: absolute !important;
+            bottom: 0 !important;
+            right: 0 !important;
+            left: 0 !important;
+            z-index: 5 !important;
+
+            padding: 16px 18px !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.10) !important;
+            background-color: #16213E !important;
+        }
+
+        /* صف الزر: النص على اليمين والمفتاح على اليسار، بثبات */
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        [data-testid="stToggle"],
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        label[data-baseweb="checkbox"] {
+            display: flex !important;
+            flex-direction: row-reverse !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            width: 100% !important;
+            gap: 12px !important;
+            margin: 0 !important;
+            direction: rtl !important;
+        }
+
+        /* نص الزر (اسم الوضع الحالي) — نستهدف عنوان الودجت الثابت */
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        [data-testid="stWidgetLabel"] p {
+            color: #FFFFFF !important;
+            font-family: "Tajawal", sans-serif !important;
+            font-size: 16px !important;
+            font-weight: 700 !important;
+            margin: 0 !important;
+        }
+
+        /* نلغي أي أنيميشن انتقالي داخل الزر: هذا اللي كان يسبب
+           رفّة/اختفاء الشكل لحظة إعادة تحميل الصفحة. */
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        [data-baseweb="checkbox"] * {
+            transition: none !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -285,12 +344,19 @@ def setup():
 # ==================================================
 
 def _sidebar_mode_toggle():
+    # النص يتغير حسب الوضع الحالي: يوضّح للمستخدم وين هو الآن.
+    current_is_individuals = app_mode.is_individuals()
+    label = "أفراد" if current_is_individuals else "جهات حكومية"
+
+    # نغلّف الزر داخل حاوية لها مفتاح ثابت (key)، فيعطيها ستريملت
+    # كلاس ثابت اسمه st-key-mode_switch_box نقدر نثبّته وننسّقه من الـCSS.
     with st.sidebar:
-        is_individuals = st.toggle(
-            "وضع الأفراد",
-            value=app_mode.is_individuals(),
-            key="mode_switch",
-        )
+        with st.container(key="mode_switch_box"):
+            is_individuals = st.toggle(
+                label,
+                value=current_is_individuals,
+                key="mode_switch",
+            )
 
     new_mode = (
         "individuals"
