@@ -275,21 +275,13 @@ def setup():
             border-color: rgba(49, 51, 63, 0.4) !important;
         }
 
-        /* ============================================
-           زر التبديل بين الجهات والأفراد (ثابت أسفل السايدبار)
-           ============================================ */
-
-        /* نخلي السايدبار مرجع للتموضع، عشان نثبّت الزر أسفله. */
         section[data-testid="stSidebar"] > div {
             position: relative !important;
         }
         section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-            /* مساحة سفلية تمنع تداخل آخر عنصر في القائمة مع الزر الثابت */
             padding-bottom: 92px !important;
         }
 
-        /* حاوية الزر: مثبّتة أسفل السايدبار بثبات، وفوقها خط فاصل خفيف.
-           التموضع absolute يخليها ثابتة مكانها ولا تتحرك مع تغيّر الصفحات. */
         section[data-testid="stSidebar"] .st-key-mode_switch_box {
             position: absolute !important;
             bottom: 0 !important;
@@ -302,7 +294,6 @@ def setup():
             background-color: #16213E !important;
         }
 
-        /* صف الزر: النص على اليمين والمفتاح على اليسار، بثبات */
         section[data-testid="stSidebar"] .st-key-mode_switch_box
         [data-testid="stToggle"],
         section[data-testid="stSidebar"] .st-key-mode_switch_box
@@ -317,7 +308,6 @@ def setup():
             direction: rtl !important;
         }
 
-        /* نص الزر (اسم الوضع الحالي) — نستهدف عنوان الودجت الثابت */
         section[data-testid="stSidebar"] .st-key-mode_switch_box
         [data-testid="stWidgetLabel"] p {
             color: #FFFFFF !important;
@@ -327,8 +317,6 @@ def setup():
             margin: 0 !important;
         }
 
-        /* نلغي أي أنيميشن انتقالي داخل الزر: هذا اللي كان يسبب
-           رفّة/اختفاء الشكل لحظة إعادة تحميل الصفحة. */
         section[data-testid="stSidebar"] .st-key-mode_switch_box
         [data-baseweb="checkbox"] * {
             transition: none !important;
@@ -340,31 +328,20 @@ def setup():
 
 
 # ==================================================
-# زر التبديل بين الجهات والأفراد (تم تصحيح المفتاح هنا)
+# زر التبديل بين الجهات والأفراد
 # ==================================================
 
 def _sidebar_mode_toggle():
-    # النص يتغير حسب الوضع الحالي: يوضّح للمستخدم وين هو الآن.
     current_is_individuals = app_mode.is_individuals()
     label = "أفراد" if current_is_individuals else "جهات حكومية"
 
-    # نغلّف الزر داخل حاوية لها مفتاح ثابت (key)، فيعطيها ستريملت
-    # كلاس ثابت اسمه st-key-mode_switch_box نقدر نثبّته وننسّقه من الـCSS.
     with st.sidebar:
-<<<<<<< Updated upstream
         with st.container(key="mode_switch_box"):
             is_individuals = st.toggle(
                 label,
                 value=current_is_individuals,
                 key="mode_switch",
             )
-=======
-        is_individuals = st.toggle(
-            "وضع الأفراد",
-            value=app_mode.is_individuals(),
-            key="unique_mode_switch_key_2026",
-        )
->>>>>>> Stashed changes
 
     new_mode = (
         "individuals"
@@ -380,7 +357,7 @@ def _sidebar_mode_toggle():
 # ==================================================
 # نافذة كلمة المرور لحماية صفحة التعديل
 # ==================================================
-CORRECT_PASSWORD = "123"  # كلمة السر
+CORRECT_PASSWORD = "123"
 
 @st.dialog("تسجيل الدخول لصفحة التعديل")
 def password_dialog():
@@ -412,7 +389,6 @@ def password_dialog():
 # تعريف صفحات التطبيق
 # ==================================================
 
-# --- صفحات وضع الجهات (مكتملة) ---
 def _departments_pages():
     return [
         st.Page(
@@ -449,7 +425,6 @@ def _departments_pages():
     ]
 
 
-# --- صفحات وضع الأفراد ---
 def _individuals_pages():
     return [
         st.Page(
@@ -463,18 +438,15 @@ def _individuals_pages():
             title="رفع ملف Excel",
             icon=":material/upload_file:",
         ),
-<<<<<<< Updated upstream
-
         st.Page(
             "Individuals/comments_page_individuals.py",
             title="تحليل تعليقات العملاء",
             icon=":material/chat_bubble_outline:",
-=======
+        ),
         st.Page(
             "Individuals/reports_individuals_page.py",
             title="التقارير",
             icon=":material/analytics:",
->>>>>>> Stashed changes
         ),
     ]
 

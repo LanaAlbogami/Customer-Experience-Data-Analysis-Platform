@@ -1,6 +1,7 @@
 import pandas as pd
 import io
 import os
+import pymysql
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -17,51 +18,77 @@ def process_arabic_text(text):
     bidi_text = get_display(reshaped_text)
     return bidi_text
 
-def format_val(val, is_csat=False):
-    if val is None or val == "None" or val == "" or str(val) == "-":
-        return "-"
+def get_previous_period(period_str):
+    """تحديد سنة وربع الفترة السابقة بدقة (مثال: الربع الثاني 2026 -> الربع الأول 2026)"""
     try:
-        num = float(val)
-        formatted = f"{num:.2f}"
-        return f"{formatted}%" if is_csat else formatted
+        parts = period_str.split(" - ")
+        year = int(parts[0].strip())
+        q_text = parts[1].strip()
+        
+        quarters = ["الربع الأول", "الربع الثاني", "الربع الثالث", "الربع الرابع"]
+        if q_text in quarters:
+            idx = quarters.index(q_text)
+            if idx > 0:
+                return year, quarters[idx - 1]
+            else:
+                return year - 1, "الربع الرابع"
     except:
-        return str(val)
+        pass
+    return None, None
 
-def build_summary_matrix(rows, factors_rows):
-    summary_list = []
+def fetch_specific_period_data(year_val, period_val):
+    """جلب بيانات ربع معين مباشرة من قاعدة البيانات"""
+    try:
+        connection = pymysql.connect(
+            host='localhost',
+            port=3307,
+            user='root',
+            password='COOP@nllr2026',
+            database='individuals_experience_db',
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
+        )
+        with connection.cursor() as cursor:
+            query = """
+                SELECT ind.IndicatorName, res.RatingValue AS CurrentValue
+                FROM individualmeasurementrecords mr
+                JOIN individualindicatorresponses res ON mr.RecordID = res.RecordID
+                JOIN sharedindicators ind ON res.IndicatorID = ind.IndicatorID
+                WHERE mr.Year = %s AND mr.Period = %s
+            """
+            cursor.execute(query, (year_val, period_val))
+            rows = cursor.fetchall()
+            
+            factor_query = """
+                SELECT f.FactorName, fr.RatingValue
+                FROM individualmeasurementrecords mr
+                JOIN individualfactorresponses fr ON mr.RecordID = fr.RecordID
+                JOIN sharedcsatfactors f ON fr.FactorID = f.FactorID
+                WHERE mr.Year = %s AND mr.Period = %s
+            """
+            cursor.execute(factor_query, (year_val, period_val))
+            f_rows = cursor.fetchall()
+        connection.close()
+        return rows, f_rows
+    except:
+        return [], []
+
+def calculate_metrics(rows, factors_rows):
+    res_dict = {}
     
-    # 1. حساب مؤشر CES النهائي بالبوينت (من -100 إلى 100)
-    # المعادلة: مجموع إجابات (4 و 5) ناقص مجموع إجابات (1 و 2)
+    # حساب CES (-100 إلى 100)
     ces_high = sum(1 for r in rows if "CES" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) >= 4)
     ces_low = sum(1 for r in rows if "CES" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) <= 2)
     ces_total = sum(1 for r in rows if "CES" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None)
+    res_dict["CES"] = ((ces_high - ces_low) / ces_total * 100) if ces_total > 0 else None
     
-    final_ces = ((ces_high - ces_low) / ces_total * 100) if ces_total > 0 else 0.0
-    
-    # 2. حساب مؤشر NPS النهائي بالبوينت (من -100 إلى 100)
-    # المعادلة: مجموع إجابات (9 و 10) ناقص مجموع إجابات من (0 إلى 6)
-    nps_promoters = sum(1 for r in rows if "NPS" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) >= 9)
-    nps_detractors = sum(1 for r in rows if "NPS" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) <= 6)
+    # حساب NPS (-100 إلى 100)
+    nps_p = sum(1 for r in rows if "NPS" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) >= 9)
+    nps_d = sum(1 for r in rows if "NPS" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) <= 6)
     nps_total = sum(1 for r in rows if "NPS" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None)
+    res_dict["NPS"] = ((nps_p - nps_d) / nps_total * 100) if nps_total > 0 else None
     
-    final_nps = ((nps_promoters - nps_detractors) / nps_total * 100) if nps_total > 0 else 0.0
-    
-    summary_list.append({
-        "Indicator": "CES",
-        "Previous": "-",
-        "Target": "76.00",
-        "Current": f"{final_ces:.2f}"
-    })
-    
-    summary_list.append({
-        "Indicator": "NPS",
-        "Previous": "-",
-        "Target": "69.00",
-        "Current": f"{final_nps:.2f}"
-    })
-    
-    # 3. حساب عوامل CSAT الـ 8 كنسبة مئوية (من 0 إلى 100)
-    # المعادلة: مجموع إجابات (4 و 5) ناقص مجموع إجابات (1 و 2) كنسبة من الإجمالي
+    # حساب عوامل CSAT الـ 8 (0 إلى 100%)
     factors_dict = {}
     for f in factors_rows:
         fname = f.get('FactorName', 'عامل')
@@ -79,20 +106,77 @@ def build_summary_matrix(rows, factors_rows):
             pos = sum(1 for v in vals if v >= 4)
             neg = sum(1 for v in vals if v <= 2)
             total = len(vals)
-            
             csat_val = ((pos - neg) / total * 100) if total > 0 else 0.0
-            if csat_val < 0:
-                csat_val = 0.0
+            if csat_val < 0: csat_val = 0.0
+            res_dict[f"CSAT - {fname}"] = csat_val
         else:
-            csat_val = 0.0
+            res_dict[f"CSAT - {fname}"] = None
             
-        summary_list.append({
-            "Indicator": f"CSAT - {fname}",
-            "Previous": "-",
-            "Target": "85.00%",
-            "Current": f"{csat_val:.2f}%"
-        })
+    return res_dict
+
+def get_previous_period(period_str):
+    """تحديد سنة وربع الفترة السابقة بدقة (مثال: الربع الأول 2026 -> الربع الرابع 2025)"""
+    try:
+        parts = period_str.split(" - ")
+        year = int(parts[0].strip())
+        q_text = parts[1].strip()
         
+        quarters = ["الربع الأول", "الربع الثاني", "الربع الثالث", "الربع الرابع"]
+        if q_text in quarters:
+            idx = quarters.index(q_text)
+            if idx > 0:
+                return year, quarters[idx - 1]
+            else:
+                return year - 1, "الربع الرابع"
+    except:
+        pass
+    return None, None
+
+def build_summary_matrix(p_name, rows, factors_rows):
+    summary_list = []
+    
+    # 1. حساب الفترة الحالية المكتوبة في التقرير
+    curr_metrics = calculate_metrics(rows, factors_rows)
+    
+    # 2. الانتقال تلقائياً للربع الذي يسبقه (حتى لو اخترتي فترة واحدة منفردة)
+    prev_year, prev_period_val = get_previous_period(p_name)
+    prev_metrics = {}
+    if prev_year and prev_period_val:
+        p_rows, p_f_rows = fetch_specific_period_data(prev_year, prev_period_val)
+        if p_rows or p_f_rows:
+            prev_metrics = calculate_metrics(p_rows, p_f_rows)
+            
+    # CES (مع تعبئة Previous إذا وجدت بيانات الربع السابق)
+    c_ces = curr_metrics.get("CES")
+    p_ces = prev_metrics.get("CES")
+    summary_list.append({
+        "Indicator": "CES",
+        "Previous": f"{p_ces:.2f}" if p_ces is not None else "-",
+        "Target": "76.00",
+        "Current": f"{c_ces:.2f}" if c_ces is not None else "-"
+    })
+    
+    # NPS (مع تعبئة Previous إذا وجدت بيانات الربع السابق)
+    c_nps = curr_metrics.get("NPS")
+    p_nps = prev_metrics.get("NPS")
+    summary_list.append({
+        "Indicator": "NPS",
+        "Previous": f"{p_nps:.2f}" if p_nps is not None else "-",
+        "Target": "69.00",
+        "Current": f"{c_nps:.2f}" if c_nps is not None else "-"
+    })
+    
+    # CSAT Factors (مع تعبئة Previous لكل عامل إذا وجدت بيانات الربع السابق)
+    for key, c_val in curr_metrics.items():
+        if key.startswith("CSAT -"):
+            p_val = prev_metrics.get(key)
+            summary_list.append({
+                "Indicator": key,
+                "Previous": f"{p_val:.2f}%" if p_val is not None else "-",
+                "Target": "85.00%",
+                "Current": f"{c_val:.2f}%" if c_val is not None else "-"
+            })
+            
     return summary_list
 
 def generate_excel(period, periods_data, factors_data):
@@ -100,9 +184,8 @@ def generate_excel(period, periods_data, factors_data):
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         for p_name, rows in periods_data.items():
             f_rows = factors_data.get(p_name, [])
-            matrix = build_summary_matrix(rows, f_rows)
+            matrix = build_summary_matrix(p_name, rows, f_rows)
             df_period = pd.DataFrame(matrix)
-            # إعادة ترتيب الأعمدة لتطابق الطلب
             df_period = df_period[["Indicator", "Previous", "Target", "Current"]]
             safe_sheet_name = p_name.replace(" & ", "_")
             df_period.to_excel(writer, index=False, sheet_name=safe_sheet_name)
@@ -178,7 +261,7 @@ def generate_pdf(period, periods_data, factors_data):
 
     for p_name, rows in periods_data.items():
         f_rows = factors_data.get(p_name, [])
-        matrix = build_summary_matrix(rows, f_rows)
+        matrix = build_summary_matrix(p_name, rows, f_rows)
         
         period_table_data = [headers]
         for item in matrix:
