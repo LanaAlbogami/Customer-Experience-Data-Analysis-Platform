@@ -391,6 +391,12 @@ def _individuals_pages():
             title="رفع ملف Excel",
             icon=":material/upload_file:",
         ),
+
+        st.Page(
+            "Individuals/comments_page_individuals.py",
+            title="تحليل تعليقات العملاء",
+            icon=":material/chat_bubble_outline:",
+        ),
     ]
 
 
