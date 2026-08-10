@@ -13,10 +13,10 @@ def fetch_summary_data_from_mysql(selected_periods):
     try:
         connection = pymysql.connect(
             host='localhost',
-            port=3307,
-            user='root',
-            password='COOP@nllr2026',
-            database='individuals_experience_db',
+            port=int(os.getenv("DB_PORT")),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD'),
+            database=os.getenv('DB_NAME_INDIVIDUALS'),
             charset='utf8mb4',
             cursorclass=pymysql.cursors.DictCursor
         )
