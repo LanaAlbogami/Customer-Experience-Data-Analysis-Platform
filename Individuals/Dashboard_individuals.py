@@ -23,6 +23,24 @@ ROLE_COLORS = {
 
 DEFAULT_TARGETS = {"csat": 85, "nps": 76, "ces": 69}
 
+# ترتيب الفترات، يُستخدم لحساب "الفترة السابقة" لأي فترة معطاة
+PERIOD_ORDER = ["الربع الأول", "الربع الثاني", "الربع الثالث", "الربع الرابع"]
+
+
+def _previous_year_period(year, period):
+    """
+    يرجع (السنة, الفترة) اللي قبل السنة والفترة المعطاة.
+    مثال: (2026, "الربع الثاني") -> (2026, "الربع الأول")
+          (2026, "الربع الأول")  -> (2025, "الربع الرابع")
+    """
+    if period not in PERIOD_ORDER:
+        return None, None
+    idx = PERIOD_ORDER.index(period)
+    if idx == 0:
+        return year - 1, PERIOD_ORDER[-1]
+    return year, PERIOD_ORDER[idx - 1]
+
+
 # ---- Force RTL + الأسلوب العام (نفس أسلوب داشبورد الجهات) ----
 st.markdown("""
 <style>
@@ -277,6 +295,30 @@ if not matching_records:
 
 agg = aggregate_records(matching_records, factor_order, indicator_names)
 
+# ---- جيب بيانات نفس الفلاتر بس للفترة السابقة (عشان دائرة "السابق") ----
+prev_years = set()
+prev_periods = set()
+for y in (selected_years or all_years):
+    for p in (selected_periods or all_periods):
+        py, pp = _previous_year_period(y, p)
+        if py is not None:
+            prev_years.add(py)
+            prev_periods.add(pp)
+
+prev_matching_records = [
+    r for r in dataset
+    if r["year"] in prev_years
+    and r["period"] in prev_periods
+    and _match(r.get("gender"), selected_genders, all_genders)
+    and _match(r.get("age_group"), selected_age_groups, all_age_groups)
+    and _match(r.get("region"), selected_regions, all_regions)
+    and _match(r.get("education"), selected_educations, all_educations)
+    and _match(r.get("id_type"), selected_id_types, all_id_types)
+    and _match(r.get("device"), selected_devices, all_devices)
+]
+
+prev_agg = aggregate_records(prev_matching_records, factor_order, indicator_names)
+
 st.caption(f"عدد الردود المطابقة للاختيار الحالي: {agg['participants_total']:,}")
 
 # ==================================================
@@ -328,17 +370,31 @@ def _display_value(value, kind):
     return f"{rounded}%" if kind == "percent" else f"{rounded}"
 
 
-def kpi_block(col, label, current, target, kind):
+def kpi_block(col, label, previous, current, target, kind):
+    """
+    يرسم بطاقة مؤشر فيها 3 دوائر منفصلة بنفس تصميم داشبورد الجهات:
+    السابق (يمين) - الحالي (بالنص، أكبر حجم) - المستهدف (يسار).
+    كل دائرة تعرض رقمها الخام بدون أي حساب فرق بينها.
+    """
     with col:
         with st.container(border=True):
-            st.markdown(f'<div class="card-title">{label}</div>', unsafe_allow_html=True)
-            c_target, c_current = st.columns([1, 1.3])
+            st.markdown(f'<div class="card-title" style="text-align:center;">{label}</div>', unsafe_allow_html=True)
+            c_prev, c_current, c_target = st.columns([1, 1.3, 1])
+
+            with c_prev:
+                st.markdown(
+                    donut_svg(_normalize(previous, kind), _display_value(previous, kind), ROLE_COLORS["previous"], size=115, stroke=13, font_size=18),
+                    unsafe_allow_html=True,
+                )
+                st.markdown('<div style="text-align:center; font-size:12px; color:#8A94B5;">السابق</div>', unsafe_allow_html=True)
+
             with c_current:
                 st.markdown(
                     donut_svg(_normalize(current, kind), _display_value(current, kind), ROLE_COLORS["current"]),
                     unsafe_allow_html=True,
                 )
                 st.markdown('<div style="text-align:center; font-size:13px; font-weight:700; color:#16213E;">الحالي</div>', unsafe_allow_html=True)
+
             with c_target:
                 st.markdown(
                     donut_svg(_normalize(target, kind), _display_value(target, kind), ROLE_COLORS["target"], size=115, stroke=13, font_size=18),
@@ -350,6 +406,7 @@ def kpi_block(col, label, current, target, kind):
 kpi_block(
     kpi_cols[0],
     "CSAT - رضا الأفراد",
+    prev_agg.get("csat_current"),
     agg.get("csat_current"),
     _target_or_default("csat", None),
     kind="percent",
@@ -364,6 +421,7 @@ for i, indicator_name in enumerate(extra_indicators, start=1):
     kpi_block(
         kpi_cols[i],
         INDICATOR_LABELS.get(indicator_name, indicator_name),
+        prev_agg["indicators"].get(indicator_name, {}).get("current_value"),
         agg["indicators"].get(indicator_name, {}).get("current_value"),
         _target_or_default(indicator_name.lower(), None),
         kind="range",
