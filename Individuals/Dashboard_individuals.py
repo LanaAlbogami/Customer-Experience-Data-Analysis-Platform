@@ -98,7 +98,7 @@ div[data-testid="stCheckbox"] label p {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("لوحة رضا الأفراد")
+st.title("لوحة مؤشرات تجربة العميل (أفراد)")
 
 try:
     from individuals.data_service_individuals import (
@@ -405,8 +405,9 @@ with st.container(border=True):
         marker_color=bar_colors,
         marker_cornerradius=8,
         text=text_labels,
-        textposition="outside",
-        textfont=dict(color="#16213E", size=13),
+        textposition="inside",
+        insidetextanchor="end",
+        textfont=dict(color="white", size=13),
         hovertemplate="%{y}<br>%{x:.2f}%<extra></extra>",
     )
     factor_fig.update_layout(
@@ -416,17 +417,17 @@ with st.container(border=True):
         bargap=0.45,
         margin=dict(l=10, r=200, t=10, b=10),
         font=dict(color="#16213E", size=13),
-        xaxis=dict(range=[100, 0], showgrid=True, gridcolor="#F1F2F7", zeroline=False),
+        xaxis=dict(range=[100, 0], showgrid=True, gridcolor="#F1F2F7", zeroline=False, automargin=True),
         yaxis=dict(side="right", showgrid=False, zeroline=False, automargin=False, tickfont=dict(size=13)),
         showlegend=False,
     )
     st.plotly_chart(factor_fig, use_container_width=True, config={"displayModeBar": False})
 
 # ==================================================
-# أحدث الردود (آخر 5 ضمن الاختيار الحالي)
+# أحدث المدخلات (آخر 5 ضمن الاختيار الحالي)
 # ==================================================
 
-st.subheader("أحدث الردود")
+st.subheader("أحدث المدخلات")
 
 st.markdown("""
 <style>
