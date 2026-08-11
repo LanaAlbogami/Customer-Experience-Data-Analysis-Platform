@@ -49,6 +49,12 @@ except ModuleNotFoundError:
         save_individual_records,
     )
 
+# تحديث تلقائي لجدول النتائج المخزّن مؤقتًا (Cache) بعد كل رفع ناجح.
+try:
+    from refresh_individual_cache import refresh as refresh_individual_cache
+except ModuleNotFoundError:
+    refresh_individual_cache = None
+
 from style import apply_theme
 
 
@@ -1392,6 +1398,17 @@ if save_clicked:
             )
 
         if result["ok"]:
+            # تحديث تلقائي للجدول المخزّن مؤقتًا فور نجاح الحفظ —
+            # ما تحتاجين تشغّلين أي سكربت يدوي بعد كذا أبدًا.
+            if refresh_individual_cache is not None:
+                try:
+                    refresh_individual_cache()
+                except Exception as cache_error:
+                    st.warning(
+                        "تم حفظ البيانات بنجاح، لكن تعذّر تحديث "
+                        f"الملخّص المخزّن مؤقتًا: {cache_error}"
+                    )
+
             st.success(
                 "تم حفظ بيانات الأفراد بنجاح. "
                 f"ملفات الأفراد الجديدة: "

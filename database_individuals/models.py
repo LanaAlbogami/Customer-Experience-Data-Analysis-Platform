@@ -2,6 +2,7 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -320,4 +321,47 @@ class IndividualIndicatorResponse(Base):
 
     indicator: Mapped["SharedIndicator"] = relationship(
         back_populates="responses"
+    )
+
+
+# ==================================================
+# جدول النتائج المخزّنة مؤقتًا (Cache)
+# يخزن النتيجة العامة (بدون فلاتر) لكل factor ومؤشر، عشان الداشبورد
+# يقرأها جاهزة بدل ما يعيد حسابها من الصفر كل مرة تُفتح فيها الصفحة.
+# يُحدَّث بعد كل رفع بيانات جديدة عن طريق refresh_individual_cache.py
+# ==================================================
+class IndividualDashboardCache(Base):
+    __tablename__ = "IndividualDashboardCache"
+
+    cache_id: Mapped[int] = mapped_column(
+        "CacheID",
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    metric_name: Mapped[str] = mapped_column(
+        "MetricName",
+        String(150),
+        nullable=False,
+        unique=True,
+    )
+
+    current_value: Mapped[float | None] = mapped_column(
+        "CurrentValue",
+        Numeric(10, 2),
+        nullable=True,
+    )
+
+    participants_count: Mapped[int] = mapped_column(
+        "ParticipantsCount",
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    updated_at: Mapped[str | None] = mapped_column(
+        "UpdatedAt",
+        String(30),
+        nullable=True,
     )

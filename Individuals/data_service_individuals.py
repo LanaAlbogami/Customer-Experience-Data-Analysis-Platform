@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import streamlit as st
 from sqlalchemy import select
 
 from database_individuals.connection import SessionLocal
 from database_individuals.models import (
+    IndividualDashboardCache,
     IndividualFactorResponse,
     IndividualIndicatorResponse,
     IndividualMeasurementRecord,
@@ -13,12 +15,17 @@ from database_individuals.models import (
 )
 
 
+@st.cache_data(ttl=300, show_spinner="جاري تحميل بيانات الأفراد...")
 def fetch_individual_dataset():
     """
     يرجع كل سجلات قياس الأفراد، كل صف يمثل استبيان فرد واحد لفترة
     معينة، مع إجابات العوامل والمؤشرات الخام (بدون أي حساب نسب هنا).
 
     الترتيب من الأحدث للأقدم (RecordID تنازليًا).
+
+    ملاحظة أداء: نجيب كل الإجابات (عوامل + مؤشرات) بـ 3 استعلامات
+    إجمالية بس (بدل استعلام منفصل لكل سجل)، ونربطها ببعض بلغة
+    بايثون — هذا يقلل عدد رحلات قاعدة البيانات من آلاف لـ 3 بس.
     """
     with SessionLocal() as session:
         rows = session.execute(
@@ -41,10 +48,36 @@ def fetch_individual_dataset():
             for indicator in session.scalars(select(SharedIndicator)).all()
         }
 
+        # استعلام واحد يجيب كل إجابات العوامل لكل السجلات دفعة وحدة
+        factor_ratings_by_record = {}
+        for factor_response in session.scalars(
+            select(IndividualFactorResponse)
+        ).all():
+            factor_name = factor_names_by_id.get(factor_response.factor_id)
+            if not factor_name:
+                continue
+            factor_ratings_by_record.setdefault(
+                factor_response.record_id, {}
+            )[factor_name] = factor_response.rating_value
+
+        # استعلام واحد يجيب كل إجابات المؤشرات لكل السجلات دفعة وحدة
+        indicator_ratings_by_record = {}
+        for indicator_response in session.scalars(
+            select(IndividualIndicatorResponse)
+        ).all():
+            indicator_name = indicator_names_by_id.get(
+                indicator_response.indicator_id
+            )
+            if not indicator_name:
+                continue
+            indicator_ratings_by_record.setdefault(
+                indicator_response.record_id, {}
+            )[indicator_name] = indicator_response.rating_value
+
         output = []
 
         for record, profile in rows:
-            row = {
+            output.append({
                 "record_id": record.record_id,
                 "individual_id": profile.individual_id,
                 "year": record.year,
@@ -56,42 +89,13 @@ def fetch_individual_dataset():
                 "device": profile.device,
                 "region": profile.region,
                 "review": record.review,
-                "factor_ratings": {},
-                "indicator_ratings": {},
-            }
-
-            factor_rows = session.scalars(
-                select(IndividualFactorResponse).where(
-                    IndividualFactorResponse.record_id == record.record_id
-                )
-            ).all()
-
-            for factor_response in factor_rows:
-                factor_name = factor_names_by_id.get(
-                    factor_response.factor_id
-                )
-                if factor_name:
-                    row["factor_ratings"][factor_name] = (
-                        factor_response.rating_value
-                    )
-
-            indicator_rows = session.scalars(
-                select(IndividualIndicatorResponse).where(
-                    IndividualIndicatorResponse.record_id
-                    == record.record_id
-                )
-            ).all()
-
-            for indicator_response in indicator_rows:
-                indicator_name = indicator_names_by_id.get(
-                    indicator_response.indicator_id
-                )
-                if indicator_name:
-                    row["indicator_ratings"][indicator_name] = (
-                        indicator_response.rating_value
-                    )
-
-            output.append(row)
+                "factor_ratings": factor_ratings_by_record.get(
+                    record.record_id, {}
+                ),
+                "indicator_ratings": indicator_ratings_by_record.get(
+                    record.record_id, {}
+                ),
+            })
 
         return output
 
@@ -224,6 +228,67 @@ def aggregate_records(records, factor_order, indicator_names):
         result["indicators"][indicator_name] = {
             "current_value": value,
             "participants_count": len(ratings),
+        }
+
+    return result
+
+
+# ==================================================
+# قراءة النتيجة العامة الجاهزة (من جدول الكاش)
+# ==================================================
+
+def fetch_cached_overall_summary(factor_order, indicator_names):
+    """
+    يرجع النتيجة العامة (بدون فلاتر) من الجدول المخزّن مؤقتًا،
+    بنفس شكل مخرجات aggregate_records() تمامًا — عشان الداشبورد
+    يقدر يستخدمها مباشرة بدون أي تعديل.
+
+    يرجع None لو الجدول فاضي (يعني لازم نرجع للحساب الحي العادي).
+    """
+    with SessionLocal() as session:
+        rows = {
+            row.metric_name: row
+            for row in session.query(IndividualDashboardCache).all()
+        }
+
+    if not rows:
+        return None
+
+    overall_row = rows.get("CSAT_OVERALL")
+
+    result = {
+        "participants_total": (
+            overall_row.participants_count if overall_row else 0
+        ),
+        "csat_current": (
+            float(overall_row.current_value)
+            if overall_row and overall_row.current_value is not None
+            else None
+        ),
+        "factors": {},
+        "indicators": {},
+    }
+
+    for factor_name in factor_order:
+        row = rows.get(factor_name)
+        result["factors"][factor_name] = {
+            "current_value": (
+                float(row.current_value)
+                if row and row.current_value is not None
+                else None
+            ),
+            "participants_count": row.participants_count if row else 0,
+        }
+
+    for indicator_name in indicator_names:
+        row = rows.get(indicator_name)
+        result["indicators"][indicator_name] = {
+            "current_value": (
+                float(row.current_value)
+                if row and row.current_value is not None
+                else None
+            ),
+            "participants_count": row.participants_count if row else 0,
         }
 
     return result
