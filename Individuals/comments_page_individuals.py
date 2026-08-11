@@ -4,13 +4,15 @@ from __future__ import annotations
 import html
 import os
 import re
+import time
 
 import pandas as pd
 import streamlit as st
-from dotenv import load_dotenv
-from openai import OpenAI
+from dotenv import find_dotenv, load_dotenv
+from google import genai
 from pydantic import BaseModel
 from sqlalchemy import select
+from pathlib import Path
 
 from database_individuals.connection import SessionLocal
 from database_individuals.models import (
@@ -18,11 +20,69 @@ from database_individuals.models import (
     IndividualProfile,
 )
 
-load_dotenv()
+# ==================================================
+# تحميل ملف .env بشكل موثوق
+# ==================================================
 
-API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
-MAX_COMMENTS_PER_ANALYSIS = 500
+def get_env_path():
+    """
+    يبحث عن .env سواء كانت الصفحة داخل individuals/
+    أو تم نقلها لمجلد آخر.
+    """
+    current_file = Path(__file__).resolve()
+
+    candidates = [
+        Path.cwd() / ".env",
+        current_file.parent / ".env",
+        current_file.parent.parent / ".env",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    found = find_dotenv(
+        filename=".env",
+        usecwd=True,
+    )
+
+    if found:
+        return Path(found)
+
+    raise RuntimeError(
+        "لم يتم العثور على ملف .env. "
+        "تأكدي أنه موجود في مجلد المشروع بجانب main.py."
+    )
+
+
+ENV_PATH = get_env_path()
+
+load_dotenv(
+    dotenv_path=ENV_PATH,
+    override=True,
+)
+
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY",
+    "",
+).strip()
+
+GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.6-flash",
+).strip()
+
+COMMENTS_BATCH_SIZE = int(
+    os.getenv(
+        "COMMENTS_BATCH_SIZE",
+        "300",
+    )
+)
+
+# يظهر في التيرمنال فقط، ولا يطبع قيمة المفتاح.
+print(f"[Gemini] ENV file: {ENV_PATH}")
+print(f"[Gemini] API key found: {bool(GEMINI_API_KEY)}")
+print(f"[Gemini] Model: {GEMINI_MODEL}")
 
 st.markdown(
     """
@@ -276,6 +336,14 @@ class Reason(BaseModel):
     count: int
 
 
+class BatchAnalysisResult(BaseModel):
+    satisfaction_count: int
+    dissatisfaction_count: int
+    neutral_count: int
+    satisfaction_reasons: list[Reason]
+    dissatisfaction_reasons: list[Reason]
+
+
 class AnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -286,64 +354,60 @@ class AnalysisResult(BaseModel):
     smart_recommendation: str
 
 
+BatchAnalysisResult.model_rebuild(
+    _types_namespace={"Reason": Reason}
+)
+
 AnalysisResult.model_rebuild(
     _types_namespace={"Reason": Reason}
 )
 
 
-def analyze_comments(data):
-    if not API_KEY:
-        raise ValueError(
-            "مفتاح OPENAI_API_KEY غير موجود داخل ملف .env"
-        )
-
-    if not data:
-        raise ValueError(
-            "لا توجد تعليقات مطابقة للتحليل."
-        )
-
-    records = "\n".join(
-        (
-            f"{index}. الجنس: {item['gender']} | "
-            f"الفئة العمرية: {item['age_group']} | "
-            f"المنطقة: {item['region']} | "
-            f"السنة: {item['year']} | "
-            f"الفترة: {item['period']} | "
-            f"التعليق: {item['comment']}"
-        )
-        for index, item in enumerate(data, start=1)
-    )
-
-    client = OpenAI(api_key=API_KEY)
-
-    response = client.chat.completions.parse(
-        model=MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": """
+BATCH_PROMPT = """
 أنت متخصص في تحليل تعليقات تجربة العملاء للأفراد باللغة العربية.
 
-صنف كل تعليق مرة واحدة فقط:
+صنف كل تعليق مرة واحدة فقط إلى:
 - رضا: إشادة أو تجربة إيجابية واضحة.
 - عدم رضا: مشكلة أو صعوبة أو تأخير أو شكوى واضحة.
 - محايد: لا يحتوي رضا أو مشكلة واضحة.
 
 القواعد:
-1. احسب satisfaction_count و dissatisfaction_count و neutral_count.
-2. استخرج سببًا رئيسيًا واحدًا فقط من كل تعليق رضا أو عدم رضا.
-3. اجمع الأسباب المتشابهة تحت اسم عربي واضح ومختصر.
-4. رتب الأسباب تنازليًا حسب العدد، وأرجع أعلى 5 أسباب فقط لكل قسم.
-5. يجب أن يساوي مجموع أعداد أسباب الرضا satisfaction_count.
-6. يجب أن يساوي مجموع أعداد أسباب عدم الرضا dissatisfaction_count.
-7. لا تخترع سببًا غير موجود.
-8. لا تعتبر الجنس أو العمر أو المنطقة أو السنة أو الفترة سببًا.
-9. لا تكرر السبب نفسه بصيغ مختلفة.
+1. حلل كل تعليق في الدفعة ولا تتجاهل أي تعليق.
+2. satisfaction_count = عدد تعليقات الرضا.
+3. dissatisfaction_count = عدد تعليقات عدم الرضا.
+4. neutral_count = عدد التعليقات المحايدة.
+5. استخرج سببًا رئيسيًا واحدًا فقط من كل تعليق رضا أو عدم رضا.
+6. اجمع الأسباب المتشابهة تحت اسم عربي واضح ومختصر.
+7. استخدم بحد أقصى 10 فئات داخل كل نوع.
+8. يجب أن يساوي مجموع أعداد أسباب الرضا satisfaction_count.
+9. يجب أن يساوي مجموع أعداد أسباب عدم الرضا dissatisfaction_count.
+10. لا تخترع سببًا غير موجود.
+11. لا تكرر السبب نفسه بصيغ مختلفة.
+12. لا تكتب خلاصة أو توصية في هذه المرحلة.
 
 أمثلة:
 سهولة الاستخدام، وضوح الإجراءات، سرعة تنفيذ الخدمة،
 مشكلات تسجيل الدخول، توفر الخدمة، جودة الدعم الفني،
 وضوح الإشعارات، سهولة التسجيل، المشكلات التقنية.
+"""
+
+
+FINAL_PROMPT = """
+أنت متخصص في تلخيص نتائج تحليل تجربة العملاء للأفراد.
+
+ستستلم الأعداد النهائية وأسبابًا مجمعة من عدة دفعات.
+
+المطلوب:
+1. ادمج الأسباب المتشابهة لغويًا ودلاليًا.
+2. اجمع أعداد الأسباب عند دمجها.
+3. أرجع أعلى 5 أسباب رضا فقط مرتبة تنازليًا.
+4. أرجع أعلى 5 أسباب عدم رضا فقط مرتبة تنازليًا.
+5. لا تغيّر satisfaction_count أو dissatisfaction_count أو neutral_count.
+6. لا تخترع سببًا غير موجود.
+
+ملاحظة:
+مجموع أعلى 5 أسباب لا يلزم أن يساوي إجمالي التعليقات،
+لأنها أعلى الأسباب فقط.
 
 اكتب summary كخلاصة قصيرة جدًا:
 - أبرز نقطة قوة.
@@ -355,25 +419,265 @@ def analyze_comments(data):
 - ما الذي يجب تحسينه أولًا.
 - نتيجة متوقعة مختصرة.
 ولا تتجاوز 70 كلمة.
-""",
-            },
-            {
-                "role": "user",
-                "content": records,
-            },
-        ],
-        response_format=AnalysisResult,
+"""
+
+
+def _gemini_client():
+    if not GEMINI_API_KEY:
+        raise ValueError(
+            "مفتاح GEMINI_API_KEY غير موجود. "
+            f"ملف البيئة المستخدم: {ENV_PATH}"
+        )
+
+    return genai.Client(
+        api_key=GEMINI_API_KEY
     )
 
-    result = response.choices[0].message.parsed
 
-    if result is None:
-        raise ValueError(
-            "لم يرجع النموذج نتيجة صالحة."
+def _structured_request(
+    client,
+    prompt,
+    response_model,
+    max_attempts=3,
+):
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            interaction = client.interactions.create(
+                model=GEMINI_MODEL,
+                input=prompt,
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": response_model.model_json_schema(),
+                },
+                store=False,
+            )
+
+            if not interaction.output_text:
+                raise ValueError(
+                    "Gemini لم يرجع نتيجة صالحة."
+                )
+
+            return response_model.model_validate_json(
+                interaction.output_text
+            )
+
+        except Exception as error:
+            last_error = error
+            error_text = str(error).lower()
+
+            temporary_error = any(
+                value in error_text
+                for value in (
+                    "429",
+                    "rate",
+                    "resource_exhausted",
+                    "timeout",
+                    "503",
+                    "temporarily",
+                )
+            )
+
+            if (
+                not temporary_error
+                or attempt == max_attempts
+            ):
+                raise
+
+            time.sleep(10 * attempt)
+
+    raise last_error
+
+
+def _analyze_batch(
+    client,
+    comments,
+):
+    records = "\n".join(
+        f"{index}. {comment}"
+        for index, comment in enumerate(
+            comments,
+            start=1,
         )
+    )
+
+    prompt = (
+        BATCH_PROMPT
+        + "\n\nالتعليقات:\n"
+        + records
+    )
+
+    for _ in range(2):
+        result = _structured_request(
+            client,
+            prompt,
+            BatchAnalysisResult,
+        )
+
+        classified_count = (
+            result.satisfaction_count
+            + result.dissatisfaction_count
+            + result.neutral_count
+        )
+
+        if classified_count == len(comments):
+            return result
+
+        prompt += (
+            "\n\nأعد التصنيف وتأكد أن مجموع "
+            "satisfaction_count + dissatisfaction_count + "
+            f"neutral_count يساوي بالضبط {len(comments)}."
+        )
+
+    raise ValueError(
+        "تعذر تصنيف جميع تعليقات إحدى الدفعات."
+    )
+
+
+def _finalize_analysis(
+    client,
+    satisfaction_count,
+    dissatisfaction_count,
+    neutral_count,
+    satisfaction_reasons,
+    dissatisfaction_reasons,
+):
+    satisfaction_text = "\n".join(
+        f"- {item.name}: {item.count}"
+        for item in satisfaction_reasons
+    )
+
+    dissatisfaction_text = "\n".join(
+        f"- {item.name}: {item.count}"
+        for item in dissatisfaction_reasons
+    )
+
+    prompt = f"""
+{FINAL_PROMPT}
+
+الأعداد النهائية:
+satisfaction_count = {satisfaction_count}
+dissatisfaction_count = {dissatisfaction_count}
+neutral_count = {neutral_count}
+
+أسباب الرضا المجمعة:
+{satisfaction_text}
+
+أسباب عدم الرضا المجمعة:
+{dissatisfaction_text}
+"""
+
+    result = _structured_request(
+        client,
+        prompt,
+        AnalysisResult,
+    )
+
+    # الأعداد النهائية نحسبها برمجيًا من كل الدفعات.
+    result.satisfaction_count = satisfaction_count
+    result.dissatisfaction_count = dissatisfaction_count
+    result.neutral_count = neutral_count
 
     return result
 
+
+def analyze_comments(data):
+    if not data:
+        raise ValueError(
+            "لا توجد تعليقات مطابقة للتحليل."
+        )
+
+    comments = [
+        item["comment"]
+        for item in data
+        if item.get("comment")
+    ]
+
+    if not comments:
+        raise ValueError(
+            "لا توجد تعليقات صالحة للتحليل."
+        )
+
+    batches = [
+        comments[index:index + COMMENTS_BATCH_SIZE]
+        for index in range(
+            0,
+            len(comments),
+            COMMENTS_BATCH_SIZE,
+        )
+    ]
+
+    client = _gemini_client()
+
+    satisfaction_count = 0
+    dissatisfaction_count = 0
+    neutral_count = 0
+
+    satisfaction_reasons = []
+    dissatisfaction_reasons = []
+
+    progress_bar = st.progress(
+        0,
+        text=(
+            f"جاري تحليل {len(comments)} تعليق "
+            f"على {len(batches)} دفعة..."
+        ),
+    )
+
+    for batch_number, batch in enumerate(
+        batches,
+        start=1,
+    ):
+        batch_result = _analyze_batch(
+            client,
+            batch,
+        )
+
+        satisfaction_count += (
+            batch_result.satisfaction_count
+        )
+        dissatisfaction_count += (
+            batch_result.dissatisfaction_count
+        )
+        neutral_count += (
+            batch_result.neutral_count
+        )
+
+        satisfaction_reasons.extend(
+            batch_result.satisfaction_reasons
+        )
+        dissatisfaction_reasons.extend(
+            batch_result.dissatisfaction_reasons
+        )
+
+        progress_bar.progress(
+            batch_number / len(batches),
+            text=(
+                f"جاري تحليل الدفعة "
+                f"{batch_number} من {len(batches)}"
+            ),
+        )
+
+    result = _finalize_analysis(
+        client=client,
+        satisfaction_count=satisfaction_count,
+        dissatisfaction_count=dissatisfaction_count,
+        neutral_count=neutral_count,
+        satisfaction_reasons=satisfaction_reasons,
+        dissatisfaction_reasons=dissatisfaction_reasons,
+    )
+
+    progress_bar.progress(
+        1.0,
+        text=(
+            f"تم تحليل جميع التعليقات: "
+            f"{len(comments)} تعليق."
+        ),
+    )
+
+    return result
 
 def show_reasons(title, reasons, badge_class):
     top_reasons = sorted(
@@ -569,13 +873,6 @@ if not filtered_data:
     st.stop()
 
 
-analysis_data = filtered_data[:MAX_COMMENTS_PER_ANALYSIS]
-
-if len(filtered_data) > MAX_COMMENTS_PER_ANALYSIS:
-    st.warning(
-        "عدد التعليقات كبير؛ سيتم تحليل أول "
-        f"{MAX_COMMENTS_PER_ANALYSIS} تعليق فقط."
-    )
 
 
 _, center, _ = st.columns([1, 1.5, 1])
@@ -593,11 +890,11 @@ if analyze_button:
     ):
         try:
             result = analyze_comments(
-                analysis_data
+                filtered_data
             )
 
             st.success(
-                "تم تحليل التعليقات بنجاح."
+                "تم تحليل جميع التعليقات بنجاح."
             )
 
             count_col1, count_col2, count_col3, count_col4 = st.columns(4)

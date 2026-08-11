@@ -5,7 +5,7 @@ individuals/data_upload_individuals.py
 صفحة رفع بيانات الأفراد مع مطابقة ذكية لأسماء أعمدة Excel.
 
 كل صف في الملف يمثل استبيان فرد واحد.
-OpenAI يستقبل أسماء الأعمدة فقط.
+Gemini يستقبل أسماء الأعمدة فقط.
 """
 
 from __future__ import annotations
@@ -555,11 +555,11 @@ st.markdown(
     <div class="upload-header" dir="rtl">
         <h1>رفع بيانات الأفراد</h1>
         <p>
-            ارفع ملف Excel، وسيطابق النظام أسماء الأعمدة تلقائيًا.
+            ارفع ملف Excel، وسيطابق Gemini أسماء الأعمدة تلقائيًا.
             افتح المراجعة فقط للتأكد أو تعديل المطابقة.
         </p>
         <div class="privacy-text">
-            يتم إرسال أسماء الأعمدة فقط إلى OpenAI
+            يتم إرسال أسماء الأعمدة فقط إلى Gemini
         </div>
     </div>
     """,

@@ -123,17 +123,19 @@ div[data-testid="stExpanderDetails"] {
 }
 
 /* Checkbox كأنها Toggle Pill ملونة */
-div[data-testid="stCheckbox"] {
+div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"] {
     background: #F7F5FC;
     border-radius: 8px;
     padding: 6px 10px;
     margin-bottom: 4px;
     transition: background 0.15s ease;
 }
-div[data-testid="stCheckbox"]:hover {
+
+div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"]:hover {
     background: #EFE9FA;
 }
-div[data-testid="stCheckbox"] label p {
+
+div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"] label p {
     font-size: 13px;
     color: #16213E;
     font-weight: 600;

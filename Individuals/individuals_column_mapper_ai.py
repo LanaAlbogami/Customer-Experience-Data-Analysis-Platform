@@ -1,286 +1,267 @@
 # -*- coding: utf-8 -*-
 """
-individuals/individuals_column_mapper_ai.py
--------------------------------------------
-مطابقة أسماء أعمدة Excel مع حقول قاعدة بيانات الأفراد.
+individuals_column_mapper_ai.py
+-------------------------------
+مطابقة أسماء أعمدة Excel مع حقول بيانات الأفراد باستخدام Gemini.
 
-لا يرسل هذا الملف صفوف Excel أو القيم أو التعليقات إلى OpenAI.
-المرسل فقط:
-- أسماء الأعمدة
-- أسماء عوامل CSAT من قاعدة البيانات
-- أسماء المؤشرات من قاعدة البيانات
+مهم:
+يتم إرسال أسماء الأعمدة + أسماء عوامل CSAT + أسماء المؤشرات فقط.
+لا يتم إرسال محتوى الصفوف أو إجابات العملاء أو التعليقات.
 """
 
 from __future__ import annotations
 
-import json
 import os
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
-from dotenv import load_dotenv
-from openai import OpenAI
-
-
-load_dotenv()
-
-
-def _nullable_string_schema() -> dict[str, Any]:
-    return {
-        "anyOf": [
-            {"type": "string"},
-            {"type": "null"},
-        ]
-    }
+from dotenv import find_dotenv, load_dotenv
+from google import genai
+from pydantic import BaseModel
 
 
-def _response_schema() -> dict[str, Any]:
-    nullable_string = _nullable_string_schema()
+# ==================================================
+# تحميل .env
+# ==================================================
 
-    return {
-        "type": "object",
-        "properties": {
-            "individual_id_column": nullable_string,
-            "time_mode": {
-                "type": "string",
-                "enum": [
-                    "date",
-                    "combined",
-                    "separate",
-                    "unknown",
-                ],
-            },
-            "date_column": nullable_string,
-            "combined_time_column": nullable_string,
-            "year_column": nullable_string,
-            "period_column": nullable_string,
-            "gender_column": nullable_string,
-            "age_group_column": nullable_string,
-            "id_type_column": nullable_string,
-            "education_column": nullable_string,
-            "device_column": nullable_string,
-            "region_column": nullable_string,
-            "factor_mappings": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "factor_name": {
-                            "type": "string"
-                        },
-                        "column_name": nullable_string,
-                    },
-                    "required": [
-                        "factor_name",
-                        "column_name",
-                    ],
-                    "additionalProperties": False,
-                },
-            },
-            "indicator_mappings": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "indicator_name": {
-                            "type": "string"
-                        },
-                        "column_name": nullable_string,
-                    },
-                    "required": [
-                        "indicator_name",
-                        "column_name",
-                    ],
-                    "additionalProperties": False,
-                },
-            },
-            "warnings": {
-                "type": "array",
-                "items": {
-                    "type": "string"
-                },
-            },
-        },
-        "required": [
-            "individual_id_column",
-            "time_mode",
-            "date_column",
-            "combined_time_column",
-            "year_column",
-            "period_column",
-            "gender_column",
-            "age_group_column",
-            "id_type_column",
-            "education_column",
-            "device_column",
-            "region_column",
-            "factor_mappings",
-            "indicator_mappings",
-            "warnings",
-        ],
-        "additionalProperties": False,
-    }
+def _get_env_path() -> Path:
+    current_file = Path(__file__).resolve()
+
+    candidates = [
+        Path.cwd() / ".env",
+        current_file.parent / ".env",
+        current_file.parent.parent / ".env",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    found = find_dotenv(
+        filename=".env",
+        usecwd=True,
+    )
+
+    if found:
+        return Path(found)
+
+    raise RuntimeError(
+        "لم يتم العثور على ملف .env. "
+        "تأكدي أنه موجود في مجلد المشروع بجانب main.py."
+    )
 
 
-def _safe_column(
+ENV_PATH = _get_env_path()
+
+load_dotenv(
+    dotenv_path=ENV_PATH,
+    override=True,
+)
+
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY",
+    "",
+).strip()
+
+GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.6-flash",
+).strip()
+
+
+# ==================================================
+# شكل النتيجة المطلوبة من Gemini
+# ==================================================
+
+class NamedColumnMapping(BaseModel):
+    name: str
+    column_name: str | None
+
+
+class IndividualColumnMapping(BaseModel):
+    individual_id_column: str | None
+
+    time_mode: Literal[
+        "date",
+        "combined",
+        "separate",
+        "unknown",
+    ]
+
+    date_column: str | None
+    combined_time_column: str | None
+    year_column: str | None
+    period_column: str | None
+
+    gender_column: str | None
+    age_group_column: str | None
+    id_type_column: str | None
+    education_column: str | None
+    device_column: str | None
+    region_column: str | None
+
+    factor_mappings: list[NamedColumnMapping]
+    indicator_mappings: list[NamedColumnMapping]
+
+    warnings: list[str]
+
+
+# ==================================================
+# أدوات التحقق من نتيجة Gemini
+# ==================================================
+
+def _valid_column(
     value: Any,
-    available_columns: set[str],
+    allowed: set[str],
 ) -> str | None:
     if not isinstance(value, str):
         return None
 
     value = value.strip()
 
-    if value in available_columns:
+    if value in allowed:
         return value
 
     return None
 
 
-def _sanitize_mapping(
-    mapping: dict[str, Any],
-    column_names: list[str],
+def _sanitize(
+    result: IndividualColumnMapping,
+    columns: list[str],
     factor_names: list[str],
     indicator_names: list[str],
 ) -> dict[str, Any]:
-    available_columns = set(column_names)
+    allowed = set(columns)
 
-    sanitized = {
-        "individual_id_column": _safe_column(
-            mapping.get("individual_id_column"),
-            available_columns,
-        ),
-        "time_mode": mapping.get(
-            "time_mode",
-            "unknown",
-        ),
-        "date_column": _safe_column(
-            mapping.get("date_column"),
-            available_columns,
-        ),
-        "combined_time_column": _safe_column(
-            mapping.get("combined_time_column"),
-            available_columns,
-        ),
-        "year_column": _safe_column(
-            mapping.get("year_column"),
-            available_columns,
-        ),
-        "period_column": _safe_column(
-            mapping.get("period_column"),
-            available_columns,
-        ),
-        "gender_column": _safe_column(
-            mapping.get("gender_column"),
-            available_columns,
-        ),
-        "age_group_column": _safe_column(
-            mapping.get("age_group_column"),
-            available_columns,
-        ),
-        "id_type_column": _safe_column(
-            mapping.get("id_type_column"),
-            available_columns,
-        ),
-        "education_column": _safe_column(
-            mapping.get("education_column"),
-            available_columns,
-        ),
-        "device_column": _safe_column(
-            mapping.get("device_column"),
-            available_columns,
-        ),
-        "region_column": _safe_column(
-            mapping.get("region_column"),
-            available_columns,
-        ),
-        "factor_mappings": {},
-        "indicator_mappings": {},
-        "warnings": [
-            str(warning).strip()
-            for warning in mapping.get(
-                "warnings",
-                [],
-            )
-            if str(warning).strip()
-        ],
-    }
+    factor_result: dict[str, str | None] = {}
 
-    if sanitized["time_mode"] not in {
+    for item in result.factor_mappings:
+        if item.name not in factor_names:
+            continue
+
+        factor_result[item.name] = _valid_column(
+            item.column_name,
+            allowed,
+        )
+
+    indicator_result: dict[str, str | None] = {}
+
+    for item in result.indicator_mappings:
+        if item.name not in indicator_names:
+            continue
+
+        indicator_result[item.name] = _valid_column(
+            item.column_name,
+            allowed,
+        )
+
+    time_mode = result.time_mode
+
+    if time_mode not in {
         "date",
         "combined",
         "separate",
         "unknown",
     }:
-        sanitized["time_mode"] = "unknown"
+        time_mode = "unknown"
 
-    returned_factors = mapping.get(
-        "factor_mappings",
-        [],
-    )
+    return {
+        "individual_id_column":
+            _valid_column(
+                result.individual_id_column,
+                allowed,
+            ),
 
-    factors_by_name = {}
+        "time_mode":
+            time_mode,
 
-    if isinstance(returned_factors, list):
-        for item in returned_factors:
-            if not isinstance(item, dict):
-                continue
+        "date_column":
+            _valid_column(
+                result.date_column,
+                allowed,
+            ),
 
-            factor_name = item.get(
-                "factor_name"
-            )
+        "combined_time_column":
+            _valid_column(
+                result.combined_time_column,
+                allowed,
+            ),
 
-            if factor_name not in factor_names:
-                continue
+        "year_column":
+            _valid_column(
+                result.year_column,
+                allowed,
+            ),
 
-            factors_by_name[
-                factor_name
-            ] = _safe_column(
-                item.get("column_name"),
-                available_columns,
-            )
+        "period_column":
+            _valid_column(
+                result.period_column,
+                allowed,
+            ),
 
-    sanitized["factor_mappings"] = {
-        factor_name: factors_by_name.get(
-            factor_name
-        )
-        for factor_name in factor_names
+        "gender_column":
+            _valid_column(
+                result.gender_column,
+                allowed,
+            ),
+
+        "age_group_column":
+            _valid_column(
+                result.age_group_column,
+                allowed,
+            ),
+
+        "id_type_column":
+            _valid_column(
+                result.id_type_column,
+                allowed,
+            ),
+
+        "education_column":
+            _valid_column(
+                result.education_column,
+                allowed,
+            ),
+
+        "device_column":
+            _valid_column(
+                result.device_column,
+                allowed,
+            ),
+
+        "region_column":
+            _valid_column(
+                result.region_column,
+                allowed,
+            ),
+
+        "factor_mappings": {
+            factor_name:
+                factor_result.get(
+                    factor_name
+                )
+            for factor_name in factor_names
+        },
+
+        "indicator_mappings": {
+            indicator_name:
+                indicator_result.get(
+                    indicator_name
+                )
+            for indicator_name in indicator_names
+        },
+
+        "warnings": [
+            str(item).strip()
+            for item in result.warnings
+            if str(item).strip()
+        ],
     }
 
-    returned_indicators = mapping.get(
-        "indicator_mappings",
-        [],
-    )
 
-    indicators_by_name = {}
-
-    if isinstance(returned_indicators, list):
-        for item in returned_indicators:
-            if not isinstance(item, dict):
-                continue
-
-            indicator_name = item.get(
-                "indicator_name"
-            )
-
-            if indicator_name not in indicator_names:
-                continue
-
-            indicators_by_name[
-                indicator_name
-            ] = _safe_column(
-                item.get("column_name"),
-                available_columns,
-            )
-
-    sanitized["indicator_mappings"] = {
-        indicator_name: indicators_by_name.get(
-            indicator_name
-        )
-        for indicator_name in indicator_names
-    }
-
-    return sanitized
-
+# ==================================================
+# المطابقة باستخدام Gemini
+# ==================================================
 
 def map_individual_columns_with_ai(
     column_names: list[str],
@@ -288,102 +269,115 @@ def map_individual_columns_with_ai(
     indicator_names: list[str],
 ) -> dict[str, Any]:
     """
-    مطابقة أسماء أعمدة ملف الأفراد.
-
-    لا ترسل الدالة أي صفوف أو قيم من ملف Excel.
+    يرسل إلى Gemini أسماء الأعمدة فقط،
+    بالإضافة إلى أسماء عوامل CSAT وأسماء المؤشرات المطلوبة.
     """
-    api_key = os.getenv(
-        "OPENAI_API_KEY"
-    )
 
-    if not api_key:
+    if not GEMINI_API_KEY:
         raise ValueError(
-            "OPENAI_API_KEY غير موجود في ملف .env."
+            "مفتاح GEMINI_API_KEY غير موجود. "
+            f"ملف البيئة المستخدم: {ENV_PATH}"
         )
 
-    model = os.getenv(
-        "OPENAI_MODEL",
-        "gpt-5-mini",
+    client = genai.Client(
+        api_key=GEMINI_API_KEY
     )
 
-    client = OpenAI(
-        api_key=api_key
+    columns_text = "\n".join(
+        f"- {column}"
+        for column in column_names
     )
 
-    payload = {
-        "excel_column_names": column_names,
-        "individual_csat_factors": factor_names,
-        "individual_indicators": indicator_names,
-    }
+    factors_text = "\n".join(
+        f"- {factor}"
+        for factor in factor_names
+    )
 
-    instructions = """
-أنت نظام لمطابقة أسماء أعمدة Excel مع حقول استبيانات الأفراد.
+    indicators_text = "\n".join(
+        f"- {indicator}"
+        for indicator in indicator_names
+    )
 
-قواعد إلزامية:
-1. استخدم فقط اسم عمود موجود حرفيًا في excel_column_names.
-2. لا تستخدم محتوى الصفوف؛ المتاح لك أسماء الأعمدة فقط.
-3. لا تطابق أعمدة التعليقات أو الملاحظات أو الاقتراحات. المستخدم يختارها يدويًا.
-4. لا تخمن عند عدم وضوح الاسم. أرجع null وأضف تحذيرًا مختصرًا.
-5. individual_id_column يُختار فقط عندما يدل الاسم بوضوح على IndividualID أو معرف فرد محفوظ في النظام. لا تعتبر رقم الاستجابة أو رقم الهوية IndividualID.
-6. طريقة الزمن:
+    prompt = f"""
+أنت نظام لمطابقة أسماء أعمدة Excel مع حقول بيانات الأفراد
+في منصة تجربة العميل.
+
+أسماء أعمدة Excel المتاحة:
+{columns_text}
+
+عوامل CSAT المطلوبة:
+{factors_text}
+
+المؤشرات المطلوبة:
+{indicators_text}
+
+التزم بالقواعد التالية بدقة:
+
+1. استخدم فقط أسماء الأعمدة الموجودة في قائمة Excel حرفيًا.
+2. لا تطلب ولا تفترض أي قيمة من داخل الصفوف.
+3. لا تطابق أعمدة التعليقات أو الملاحظات؛ المستخدم سيختارها بنفسه.
+4. individual_id_column:
+   اربطه فقط إذا كان هناك عمود معرف فرد واضح مثل:
+   IndividualID أو Individual ID.
+   لا تستخدم ResponseId بدلًا منه إلا إذا كان واضحًا أنه معرف الفرد.
+5. time_mode:
    - date: يوجد عمود تاريخ يمكن استخراج السنة والربع منه.
-   - combined: السنة والربع في عمود واحد.
-   - separate: السنة وعمود الربع منفصلان.
-   - unknown: لا توجد دلالة كافية.
-7. البيانات الديموغرافية:
-   - gender_column: الجنس.
-   - age_group_column: الفئة العمرية.
-   - id_type_column: نوع الهوية، وليس رقم الهوية.
-   - education_column: المستوى التعليمي.
-   - device_column: الجهاز أو نوع الجهاز.
-   - region_column: المنطقة.
-8. factor_mappings يجب أن يحتوي عنصرًا لكل عامل موجود في individual_csat_factors، وبنفس الاسم حرفيًا. column_name يكون null إذا لم توجد مطابقة واضحة.
-9. indicator_mappings يجب أن يحتوي عنصرًا لكل مؤشر موجود في individual_indicators، وبنفس الاسم حرفيًا. column_name يكون null إذا لم توجد مطابقة واضحة.
-10. لا تستخدم العمود نفسه لأكثر من عامل أو مؤشر.
-11. أعمدة مثل Q1 وQ2 دون وصف دلالي واضح لا تكفي للمطابقة.
+   - combined: السنة والربع موجودان في عمود واحد.
+   - separate: السنة والربع في عمودين منفصلين.
+   - unknown: لا يمكن تحديد الطريقة بثقة.
+6. طابق الحقول الديموغرافية إن وجدت:
+   - gender_column = الجنس
+   - age_group_column = الفئة العمرية
+   - id_type_column = نوع الهوية
+   - education_column = المستوى التعليمي
+   - device_column = الجهاز أو نوع الجهاز
+   - region_column = المنطقة
+7. اربط كل عامل CSAT بعمود الإجابة الخاص به.
+8. اربط كل مؤشر مطلوب بعمود الإجابة الخاص به.
+9. لا تستخدم العمود نفسه لأكثر من عامل أو مؤشر.
+10. إذا كان العمود عامًا مثل Q1 أو Question 1 بلا وصف كافٍ:
+    لا تخمن، أرجع null وأضف تحذيرًا.
+11. أرجع factor_mappings لكل عامل مطلوب،
+    حتى لو كانت column_name = null.
+12. أرجع indicator_mappings لكل مؤشر مطلوب،
+    حتى لو كانت column_name = null.
+13. إذا لم تجد حقلًا بثقة، استخدم null بدل التخمين.
+14. لا تعتبر أعمدة مثل "ملاحظات إضافية" عوامل أو مؤشرات.
 """
 
-    response = client.responses.create(
-        model=model,
-        instructions=instructions,
-        input=json.dumps(
-            payload,
-            ensure_ascii=False,
-        ),
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": (
-                    "individual_excel_column_mapping"
-                ),
-                "description": (
-                    "مطابقة أسماء أعمدة Excel مع حقول بيانات الأفراد"
-                ),
-                "strict": True,
-                "schema": _response_schema(),
-            }
+    interaction = client.interactions.create(
+        model=GEMINI_MODEL,
+        input=prompt,
+        response_format={
+            "type": "text",
+            "mime_type": "application/json",
+            "schema":
+                IndividualColumnMapping.model_json_schema(),
         },
         store=False,
     )
 
-    if not response.output_text:
+    if not interaction.output_text:
         raise ValueError(
-            "لم يرجع OpenAI نتيجة للمطابقة."
+            "لم يرجع Gemini نتيجة للمطابقة."
         )
 
     try:
-        mapping = json.loads(
-            response.output_text
+        parsed = (
+            IndividualColumnMapping
+            .model_validate_json(
+                interaction.output_text
+            )
         )
 
-    except json.JSONDecodeError as error:
+    except Exception as error:
         raise ValueError(
-            "تعذر قراءة نتيجة مطابقة الأعمدة."
+            "تعذر قراءة نتيجة مطابقة Gemini."
         ) from error
 
-    return _sanitize_mapping(
-        mapping=mapping,
-        column_names=column_names,
-        factor_names=factor_names,
-        indicator_names=indicator_names,
+    return _sanitize(
+        parsed,
+        column_names,
+        factor_names,
+        indicator_names,
     )
