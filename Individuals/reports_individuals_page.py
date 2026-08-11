@@ -112,19 +112,38 @@ if submit_button:
     if not selected_periods or selected_format is None:
         st.error("الرجاء اختيار فترة واحدة على الأقل وتحديد صيغة الملف.")
     else:
-        periods_data, factors_data, missing_periods = fetch_summary_data_from_mysql(selected_periods)
+        # دالة لترتيب الفترات زمنياً (من الأقدم إلى الأحدث)
+        def sort_period_key(p_str):
+            try:
+                parts = p_str.split(" - ")
+                year = int(parts[0].strip())
+                q_text = parts[1].strip()
+                q_map = {"الربع الأول": 1, "الربع الثاني": 2, "الربع الثالث": 3, "الربع الرابع": 4}
+                return (year, q_map.get(q_text, 0))
+            except:
+                return (0, 0)
+
+        # فرز الفترات تصاعدياً (من الأقدم للأحدث)
+        sorted_periods = sorted(selected_periods, key=sort_period_key)
+
+        periods_data, factors_data, missing_periods = fetch_summary_data_from_mysql(sorted_periods)
         
         if missing_periods:
             st.error(f"تعذر إنشاء التقرير! الفترات التالية ليس لها بيانات مسجلة: {', '.join(missing_periods)}.")
         else:
             st.success("تم تجهيز التقرير النهائي بنجاح، اضغط على زر التحميل أدناه.")
             
-            period_label = " & ".join(selected_periods)
+            # دمج الفترات بالترتيب الصحيح (الأقدم فالأجدد)
+            period_label = " & ".join(sorted_periods)
+            
+            # إعادة بناء قاموس البيانات لضمان اتباع نفس الترتيب التصاعدي
+            ordered_periods_data = {p: periods_data[p] for p in sorted_periods if p in periods_data}
+            ordered_factors_data = {p: factors_data[p] for p in sorted_periods if p in factors_data}
             
             if selected_format == "Excel":
-                file_content, file_name, mime_type = generate_excel(period_label, periods_data, factors_data)
+                file_content, file_name, mime_type = generate_excel(period_label, ordered_periods_data, ordered_factors_data)
             else:
-                file_content, file_name, mime_type = generate_pdf(period_label, periods_data, factors_data)
+                file_content, file_name, mime_type = generate_pdf(period_label, ordered_periods_data, ordered_factors_data)
             
             st.download_button(
                 label="احفظ الملف الآن",
