@@ -64,3 +64,6 @@ typing_extensions==4.16.0
 urllib3==2.7.0
 uvicorn==0.51.0
 websockets==16.1.1
+arabic-reshaper==3.0.1
+python-bidi==0.6.11
+google-genai
