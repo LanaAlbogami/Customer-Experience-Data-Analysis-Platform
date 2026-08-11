@@ -321,6 +321,19 @@ def setup():
         [data-baseweb="checkbox"] * {
             transition: none !important;
         }
+        /* التوقل نفسه (track + thumb) — نرجّعه LTR عشان الكرة ما تطير */
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        label[data-baseweb="checkbox"] > div:last-child,
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        label[data-baseweb="checkbox"] > div:last-child * {
+            direction: ltr !important;
+        }
+        /* إجبار الكرة تلتصق يسار البيل وتتحرك يمين عند التفعيل */
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        .st-emotion-cache-1hoeffx {
+            direction: ltr !important;
+            right: auto !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
