@@ -20,11 +20,77 @@ from database_individuals.models import (
     IndividualProfile,
 )
 
+<<<<<<< Updated upstream
 # إعداد متغيرات البيئة
 
 def get_env_path():
     """البحث عن ملف .env داخل مجلدات المشروع."""
     current_file = Path(__file__).resolve()
+=======
+# ==================================================
+# تحميل ملف .env بشكل موثوق
+# ==================================================
+
+def get_env_path():
+    """
+    يبحث عن .env سواء كانت الصفحة داخل individuals/
+    أو تم نقلها لمجلد آخر.
+    """
+    current_file = Path(__file__).resolve()
+
+    candidates = [
+        Path.cwd() / ".env",
+        current_file.parent / ".env",
+        current_file.parent.parent / ".env",
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    found = find_dotenv(
+        filename=".env",
+        usecwd=True,
+    )
+
+    if found:
+        return Path(found)
+
+    raise RuntimeError(
+        "لم يتم العثور على ملف .env. "
+        "تأكدي أنه موجود في مجلد المشروع بجانب main.py."
+    )
+
+
+ENV_PATH = get_env_path()
+
+load_dotenv(
+    dotenv_path=ENV_PATH,
+    override=True,
+)
+
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY",
+    "",
+).strip()
+
+GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.6-flash",
+).strip()
+
+COMMENTS_BATCH_SIZE = int(
+    os.getenv(
+        "COMMENTS_BATCH_SIZE",
+        "300",
+    )
+)
+
+# يظهر في التيرمنال فقط، ولا يطبع قيمة المفتاح.
+print(f"[Gemini] ENV file: {ENV_PATH}")
+print(f"[Gemini] API key found: {bool(GEMINI_API_KEY)}")
+print(f"[Gemini] Model: {GEMINI_MODEL}")
+>>>>>>> Stashed changes
 
     candidates = [
         Path.cwd() / ".env",
@@ -342,7 +408,10 @@ class Reason(BaseModel):
     count: int
 
 
+<<<<<<< Updated upstream
 # نتيجة تحليل دفعة واحدة
+=======
+>>>>>>> Stashed changes
 class BatchAnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -351,7 +420,10 @@ class BatchAnalysisResult(BaseModel):
     dissatisfaction_reasons: list[Reason]
 
 
+<<<<<<< Updated upstream
 # النتيجة النهائية للتحليل
+=======
+>>>>>>> Stashed changes
 class AnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -371,7 +443,10 @@ AnalysisResult.model_rebuild(
 )
 
 
+<<<<<<< Updated upstream
 # تعليمات Gemini لتحليل كل دفعة
+=======
+>>>>>>> Stashed changes
 BATCH_PROMPT = """
 أنت متخصص في تحليل تعليقات تجربة العملاء للأفراد باللغة العربية.
 
@@ -401,7 +476,10 @@ BATCH_PROMPT = """
 """
 
 
+<<<<<<< Updated upstream
 # تعليمات Gemini لتجميع النتائج النهائية
+=======
+>>>>>>> Stashed changes
 FINAL_PROMPT = """
 أنت متخصص في تلخيص نتائج تحليل تجربة العملاء للأفراد.
 
@@ -432,8 +510,11 @@ FINAL_PROMPT = """
 """
 
 
+<<<<<<< Updated upstream
 # إنشاء اتصال Gemini
 
+=======
+>>>>>>> Stashed changes
 def _gemini_client():
     if not GEMINI_API_KEY:
         raise ValueError(
@@ -446,8 +527,11 @@ def _gemini_client():
     )
 
 
+<<<<<<< Updated upstream
 # إرسال الطلب مع إعادة المحاولة عند الأخطاء المؤقتة
 
+=======
+>>>>>>> Stashed changes
 def _structured_request(
     client,
     prompt,
@@ -505,8 +589,11 @@ def _structured_request(
     raise last_error
 
 
+<<<<<<< Updated upstream
 # تحليل دفعة واحدة من التعليقات
 
+=======
+>>>>>>> Stashed changes
 def _analyze_batch(
     client,
     comments,
@@ -552,8 +639,11 @@ def _analyze_batch(
     )
 
 
+<<<<<<< Updated upstream
 # دمج نتائج الدفعات وإنتاج الخلاصة والتوصية
 
+=======
+>>>>>>> Stashed changes
 def _finalize_analysis(
     client,
     satisfaction_count,
@@ -601,8 +691,11 @@ neutral_count = {neutral_count}
     return result
 
 
+<<<<<<< Updated upstream
 # تقسيم التعليقات إلى دفعات وتحليلها
 
+=======
+>>>>>>> Stashed changes
 def analyze_comments(data):
     if not data:
         raise ValueError(
@@ -699,8 +792,11 @@ def analyze_comments(data):
 
     return result
 
+<<<<<<< Updated upstream
 # عرض أعلى خمسة أسباب داخل بطاقة
 
+=======
+>>>>>>> Stashed changes
 def show_reasons(title, reasons, badge_class):
     top_reasons = sorted(
         reasons,

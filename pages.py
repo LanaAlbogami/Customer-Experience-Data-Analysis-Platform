@@ -451,11 +451,19 @@ def _individuals_pages():
             title="رفع ملف Excel",
             icon=":material/upload_file:",
         ),
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3f21597ed68063510ace31dd366c57c2ad2ead9e
         st.Page(
             "Individuals/comments_page_individuals.py",
             title="تحليل تعليقات العملاء",
             icon=":material/chat_bubble_outline:",
         ),
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3f21597ed68063510ace31dd366c57c2ad2ead9e
         st.Page(
             "Individuals/reports_individuals_page.py",
             title="التقارير",

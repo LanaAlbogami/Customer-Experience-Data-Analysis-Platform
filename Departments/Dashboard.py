@@ -121,7 +121,11 @@ div[data-testid="stExpanderDetails"] {
     padding: 6px 14px 14px 14px !important;
 }
 
+<<<<<<< Updated upstream:Departments/Dashboard.py
 /* Styles filter checkboxes as pill-like options. */
+=======
+/* Checkbox كأنها Toggle Pill ملونة */
+>>>>>>> Stashed changes:Dashboard.py
 div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"] {
     background: #F7F5FC;
     border-radius: 8px;

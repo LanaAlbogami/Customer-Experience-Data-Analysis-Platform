@@ -34,7 +34,10 @@ from database.models import (
 # إعداد متغيرات البيئة
 
 def get_env_path():
+<<<<<<< Updated upstream:Departments/comments_page.py
     """البحث عن ملف .env داخل مجلدات المشروع."""
+=======
+>>>>>>> Stashed changes:comments_page.py
     current_file = Path(__file__).resolve()
 
     candidates = [
@@ -59,6 +62,38 @@ def get_env_path():
         "لم يتم العثور على ملف .env. "
         "تأكدي أنه موجود في مجلد المشروع بجانب main.py."
     )
+<<<<<<< Updated upstream:Departments/comments_page.py
+=======
+
+
+ENV_PATH = get_env_path()
+
+load_dotenv(
+    dotenv_path=ENV_PATH,
+    override=True,
+)
+
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY",
+    "",
+).strip()
+
+GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.6-flash",
+).strip()
+
+COMMENTS_BATCH_SIZE = int(
+    os.getenv(
+        "COMMENTS_BATCH_SIZE",
+        "300",
+    )
+)
+
+print(f"[Gemini Sections] ENV file: {ENV_PATH}")
+print(f"[Gemini Sections] API key found: {bool(GEMINI_API_KEY)}")
+print(f"[Gemini Sections] Model: {GEMINI_MODEL}")
+>>>>>>> Stashed changes:comments_page.py
 
 
 # تحديد مسار ملف البيئة
@@ -384,7 +419,11 @@ def fetch_comments_from_db():
     return comments
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # نماذج بيانات نتائج Gemini
+=======
+# شكل استجابة Gemini
+>>>>>>> Stashed changes:comments_page.py
 
 # بيانات السبب وعدد تكراره
 class Reason(BaseModel):
@@ -392,7 +431,10 @@ class Reason(BaseModel):
     count: int
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # نتيجة تحليل دفعة واحدة
+=======
+>>>>>>> Stashed changes:comments_page.py
 class BatchAnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -401,7 +443,10 @@ class BatchAnalysisResult(BaseModel):
     dissatisfaction_reasons: list[Reason]
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # النتيجة النهائية للتحليل
+=======
+>>>>>>> Stashed changes:comments_page.py
 class AnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -421,7 +466,10 @@ AnalysisResult.model_rebuild(
 )
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # تعليمات Gemini لتحليل كل دفعة
+=======
+>>>>>>> Stashed changes:comments_page.py
 BATCH_PROMPT = """
 أنت متخصص في تحليل تعليقات تجربة العملاء للجهات والخدمات باللغة العربية.
 
@@ -453,7 +501,10 @@ BATCH_PROMPT = """
 """
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # تعليمات Gemini لتجميع النتائج النهائية
+=======
+>>>>>>> Stashed changes:comments_page.py
 FINAL_PROMPT = """
 أنت متخصص في تلخيص نتائج تحليل تجربة العملاء للجهات والخدمات.
 
@@ -485,8 +536,11 @@ FINAL_PROMPT = """
 """
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # إنشاء اتصال Gemini
 
+=======
+>>>>>>> Stashed changes:comments_page.py
 def _gemini_client():
     if not GEMINI_API_KEY:
         raise ValueError(
@@ -499,8 +553,11 @@ def _gemini_client():
     )
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # إرسال الطلب مع إعادة المحاولة عند الأخطاء المؤقتة
 
+=======
+>>>>>>> Stashed changes:comments_page.py
 def _structured_request(
     client,
     prompt,
@@ -563,8 +620,11 @@ def _structured_request(
     raise last_error
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # تحليل دفعة واحدة من التعليقات
 
+=======
+>>>>>>> Stashed changes:comments_page.py
 def _analyze_batch(
     client,
     batch,
@@ -616,8 +676,11 @@ def _analyze_batch(
     )
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # دمج نتائج الدفعات وإنتاج الخلاصة والتوصية
 
+=======
+>>>>>>> Stashed changes:comments_page.py
 def _finalize_analysis(
     client,
     satisfaction_count,
@@ -661,6 +724,95 @@ neutral_count = {neutral_count}
     result.dissatisfaction_count = dissatisfaction_count
     result.neutral_count = neutral_count
 
+<<<<<<< Updated upstream:Departments/comments_page.py
+=======
+    return result
+
+
+def analyze_comments(data):
+    if not data:
+        raise ValueError(
+            "لا توجد تعليقات مطابقة للتحليل."
+        )
+
+    batches = [
+        data[index:index + COMMENTS_BATCH_SIZE]
+        for index in range(
+            0,
+            len(data),
+            COMMENTS_BATCH_SIZE,
+        )
+    ]
+
+    client = _gemini_client()
+
+    satisfaction_count = 0
+    dissatisfaction_count = 0
+    neutral_count = 0
+
+    satisfaction_reasons = []
+    dissatisfaction_reasons = []
+
+    progress_bar = st.progress(
+        0,
+        text=(
+            f"جاري تحليل {len(data)} تعليق "
+            f"على {len(batches)} دفعة..."
+        ),
+    )
+
+    for batch_number, batch in enumerate(
+        batches,
+        start=1,
+    ):
+        batch_result = _analyze_batch(
+            client,
+            batch,
+        )
+
+        satisfaction_count += (
+            batch_result.satisfaction_count
+        )
+        dissatisfaction_count += (
+            batch_result.dissatisfaction_count
+        )
+        neutral_count += (
+            batch_result.neutral_count
+        )
+
+        satisfaction_reasons.extend(
+            batch_result.satisfaction_reasons
+        )
+        dissatisfaction_reasons.extend(
+            batch_result.dissatisfaction_reasons
+        )
+
+        progress_bar.progress(
+            batch_number / len(batches),
+            text=(
+                f"جاري تحليل الدفعة "
+                f"{batch_number} من {len(batches)}"
+            ),
+        )
+
+    result = _finalize_analysis(
+        client=client,
+        satisfaction_count=satisfaction_count,
+        dissatisfaction_count=dissatisfaction_count,
+        neutral_count=neutral_count,
+        satisfaction_reasons=satisfaction_reasons,
+        dissatisfaction_reasons=dissatisfaction_reasons,
+    )
+
+    progress_bar.progress(
+        1.0,
+        text=(
+            f"تم تحليل جميع التعليقات: "
+            f"{len(data)} تعليق."
+        ),
+    )
+
+>>>>>>> Stashed changes:comments_page.py
     return result
 
 
@@ -981,7 +1133,11 @@ if not filtered_data:
     st.stop()
 
 
+<<<<<<< Updated upstream:Departments/comments_page.py
 # توسيط زر بدء التحليل
+=======
+# زر التحليل
+>>>>>>> Stashed changes:comments_page.py
 
 _, center, _ = st.columns(
     [1, 1.5, 1]
