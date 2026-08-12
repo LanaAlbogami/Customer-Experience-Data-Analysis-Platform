@@ -3,7 +3,7 @@ from sqlalchemy import select
 from database.connection import SessionLocal
 from database.models import Department, Service
 
-#اضافه خدمه
+# create new service
 def create_service(
         service_name: str,
         department_id: int,
@@ -35,7 +35,7 @@ def create_service(
 
      return service
 
-#ارجع خدمه بناء على الايدي
+# get a service by its ID. Returns None if not found.
 def get_service(
       service_id: int,
 ) -> Service | None:
@@ -48,7 +48,7 @@ def get_service(
 
       return service
 
-#ارجع كل الخدمات
+# get all services. Returns a list of Service objects.
 def get_all_services() -> list[Service]:
    with SessionLocal() as session:
 
@@ -60,7 +60,7 @@ def get_all_services() -> list[Service]:
 
       return list(services)
    
-#اطلع الخدمه بناء على القسم
+# get all services for a specific department. Returns a list of Service objects.
 def get_services_by_department(
     department_id: int,
 ) -> list[Service]:
@@ -76,7 +76,7 @@ def get_services_by_department(
         return list(services)
 
 
-#تحديث الخدمه, تغيير اسمها, نقلها لقسم ثاني
+# update a service's name and/or department by its ID. Returns the updated Service object or None if not found.
 def update_service(
       service_id: int,
       new_name: str,
@@ -113,7 +113,7 @@ def update_service(
 
       return service    
 
-
+# delete a service by its ID. Returns True if deleted, False if not found. Raises ValueError if the service has measurement records.
 def delete_service(service_id: int) -> bool:
     with SessionLocal() as session:
         service = session.get(

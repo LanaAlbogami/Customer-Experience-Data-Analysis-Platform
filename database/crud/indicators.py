@@ -27,6 +27,7 @@ DEFAULT_INDICATORS = [
     },
 ]
 
+# This function creates default indicators in the database.
 def create_default_indicators() -> None:
     with SessionLocal() as session:
         for indicator_data in DEFAULT_INDICATORS:
@@ -51,7 +52,7 @@ from sqlalchemy import select
 from database.connection import SessionLocal
 from database.models import Indicator
 
-
+# create a new indicator in the database and return the created Indicator object.
 def create_indicator(
     indicator_name: str,
     unit: str,
@@ -97,7 +98,7 @@ def create_indicator(
 
         return indicator
 
-
+# get an indicator by its ID. Returns None if not found.
 def get_indicator(
     indicator_id: int,
 ) -> Indicator | None:
@@ -109,7 +110,7 @@ def get_indicator(
 
         return indicator    
 
-
+# get all indicators. Returns a list of Indicator objects.
 def get_all_indicators() -> list[Indicator]:
     with SessionLocal() as session:
         statement = select(Indicator).order_by(
@@ -121,7 +122,7 @@ def get_all_indicators() -> list[Indicator]:
         return list(indicators)
 
 
-
+# update an existing indicator in the database and return the updated Indicator object. Returns None if the indicator was not found.
 def update_indicator(
     indicator_id: int,
     new_name: str,
@@ -174,7 +175,7 @@ def update_indicator(
 
         return indicator
 
-
+# delete an indicator by its ID. Returns True if deleted, False if not found.
 def delete_indicator(indicator_id: int) -> bool:
     with SessionLocal() as session:
         indicator = session.get(

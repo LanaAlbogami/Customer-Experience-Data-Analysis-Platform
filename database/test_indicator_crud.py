@@ -4,7 +4,7 @@ from database.crud.indicator_results import (
     create_indicator_result,
 )
 
-
+# This script is for testing the creation of an indicator result in the database.
 try:
     result = create_indicator_result(
         record_id=1,

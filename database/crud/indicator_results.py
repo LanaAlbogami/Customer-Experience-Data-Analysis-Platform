@@ -10,7 +10,7 @@ from database.models import (
 )
 
 
-#عشان يتأكد ان القيمه بالنطاق
+# validate that the result values are within the indicator's min and max range.
 def validate_result_values(
     indicator: Indicator,
     prev_value: Decimal | None,
@@ -39,7 +39,7 @@ def validate_result_values(
                 f"{indicator.max_value}."
             )
 
-
+# create a new indicator result in the database and return the created IndicatorResult object.
 def create_indicator_result(
     record_id: int,
     indicator_id: int,
@@ -102,7 +102,7 @@ def create_indicator_result(
 
         return result
 
-
+# get an indicator result by its ID. Returns None if not found.
 def get_indicator_result(
     result_id: int,
 ) -> IndicatorResult | None:
@@ -114,7 +114,7 @@ def get_indicator_result(
 
         return result
 
-
+# get all indicator results. Returns a list of IndicatorResult objects.
 def get_all_indicator_results() -> list[IndicatorResult]:
     with SessionLocal() as session:
         statement = select(IndicatorResult).order_by(
@@ -126,7 +126,7 @@ def get_all_indicator_results() -> list[IndicatorResult]:
 
         return list(results)
 
-
+# get all indicator results for a specific measurement record. Returns a list of IndicatorResult objects.
 def get_results_by_record(
     record_id: int,
 ) -> list[IndicatorResult]:
@@ -145,7 +145,7 @@ def get_results_by_record(
 
         return list(results)
 
-
+# get all indicator results for a specific indicator. Returns a list of IndicatorResult objects.
 def get_results_by_indicator(
     indicator_id: int,
 ) -> list[IndicatorResult]:
@@ -164,7 +164,7 @@ def get_results_by_indicator(
 
         return list(results)
 
-
+# get an indicator result by its measurement record ID and indicator ID. Returns None if not found.
 def get_result_by_record_and_indicator(
     record_id: int,
     indicator_id: int,
@@ -179,7 +179,7 @@ def get_result_by_record_and_indicator(
 
         return result
 
-
+# update an existing indicator result in the database and return the updated IndicatorResult object. Returns None if the result was not found.
 def update_indicator_result(
     result_id: int,
     record_id: int,
@@ -249,7 +249,7 @@ def update_indicator_result(
 
         return result
 
-
+# delete an indicator result by its ID. Returns True if deleted, False if not found.
 def delete_indicator_result(
     result_id: int,
 ) -> bool:

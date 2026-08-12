@@ -4,7 +4,7 @@ from database.connection import SessionLocal
 from database.models import MeasurementRecord, Service
 
 
-#اضافه ريكورد جديد
+# create a new measurement record in the database and return the created MeasurementRecord object.
 def create_measurement_record(
     service_id: int,
     year: int,
@@ -54,7 +54,7 @@ def create_measurement_record(
 
         return record
 
-#ارجع معلومات ريكورد معين بناء على الايدي
+# get a measurement record by its ID. Returns None if not found.
 def get_measurement_record(
         record_id: int,
 ) -> MeasurementRecord | None:
@@ -67,7 +67,7 @@ def get_measurement_record(
 
         return record    
 
-#يرجع كل الريكورد حسب السنه اول بعدين الفتره
+# get all measurement records ordered by year and period. Returns a list of MeasurementRecord objects.
 def get_all_measurement_records() -> list[MeasurementRecord]:
     with SessionLocal() as session:
         statement = select(MeasurementRecord).order_by(
@@ -79,7 +79,7 @@ def get_all_measurement_records() -> list[MeasurementRecord]:
 
         return list(records)
 
-#ارجع الريكورد التابع لخدمه معينه
+# get measurement records by service ID. Returns a list of MeasurementRecord objects.
 def get_records_by_service(
     service_id: int,
 ) -> list[MeasurementRecord]:
@@ -100,7 +100,7 @@ def get_records_by_service(
         return list(records)
 
 
-#ارجع الريكورد التابع لسنه معينه
+# get measurement records by year. Returns a list of MeasurementRecord objects.
 def get_records_by_year(
     year: int,
 ) -> list[MeasurementRecord]:
@@ -122,7 +122,7 @@ def get_records_by_year(
         return list(records)        
 
 
-#ارجع الريكورد التابع لفتره معينه
+# get measurement records by period. Returns a list of MeasurementRecord objects.
 def get_records_by_period(
     period: str,
 ) -> list[MeasurementRecord]:
@@ -147,7 +147,7 @@ def get_records_by_period(
 
         return list(records)
 
-#ارجع ريكورد بناءء على السنه والفتره
+# get measurement records by year and period. Returns a list of MeasurementRecord objects.
 def get_records_by_year_and_period(
     year: int,
     period: str,
@@ -177,7 +177,7 @@ def get_records_by_year_and_period(
         return list(records)    
 
 
-#تحديث البيانات
+# update an existing measurement record in the database and return the updated MeasurementRecord object. Returns None if the record was not found.
 def update_measurement_record(
     record_id: int,
     service_id: int,
@@ -233,7 +233,7 @@ def update_measurement_record(
 
         return record
 
-#حذف ريكورد
+# delete a measurement record by its ID. Returns True if deleted, False if not found. Raises ValueError if the record has indicator results.
 def delete_measurement_record(record_id: int) -> bool:
     with SessionLocal() as session:
         record = session.get(

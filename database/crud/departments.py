@@ -3,7 +3,7 @@ from sqlalchemy import delete, select, update
 from database.connection import SessionLocal
 from database.models import Department, Service
 
-#اضافه قسم جديد
+#Add a new department to the database and return the created Department object.
 def  create_department(department_name: str) -> Department:
     department_name = department_name.strip()
     if not department_name:
@@ -21,7 +21,7 @@ def  create_department(department_name: str) -> Department:
         return department
 
 
-#البحث عن قسم باستخدام الايدي
+#Get a department by its ID. Returns None if not found.
 def get_department(department_id : int) -> Department | None:
     with SessionLocal() as session:
         department = session.get(
@@ -31,7 +31,7 @@ def get_department(department_id : int) -> Department | None:
 
         return department
 
-#ترجع كل الاقسام
+#Get all departments. Returns a list of Department objects.
 def get_all_departments() -> list[Department]:
     with SessionLocal() as session:
         statement = select(Department).order_by(
@@ -42,7 +42,7 @@ def get_all_departments() -> list[Department]:
 
         return list(departments)
     
-#اعدل اسم القسم
+#Update a department's name by its ID. Returns the updated Department object or None if not found.
 def update_department(
         department_id: int,
         new_name: str,
@@ -69,7 +69,7 @@ def update_department(
         return department
 
 
-#حذف قسم ونقل الخدمه لقسم اخر
+#Delete a department by its ID and reassign its services to a new department. Returns True if deleted, False if not found. Raises ValueError if the new department is the same as the one being deleted or if the new department does not exist.
 def delete_department(
     department_id: int,
     new_department_id: int,
