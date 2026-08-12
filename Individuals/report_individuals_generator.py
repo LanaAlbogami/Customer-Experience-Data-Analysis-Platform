@@ -14,31 +14,48 @@ from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl import load_workbook
 
 def process_arabic_text(text):
+    """
+    Reshapes and reverses Arabic text using arabic_reshaper and bidi algorithm 
+    so that Arabic characters render correctly from right to left in PDF outputs.
+    """
+    # Reshape Arabic characters to connect properly based on their positions
     reshaped_text = arabic_reshaper.reshape(str(text))
+    # Apply BiDi algorithm to fix text direction flow for PDF display
     bidi_text = get_display(reshaped_text)
     return bidi_text
 
 def get_previous_period(period_str):
-    """تحديد سنة وربع الفترة السابقة بدقة (مثال: الربع الثاني 2026 -> الربع الأول 2026)"""
+    """
+    Determines the previous year and quarter string accurately 
+    (e.g., 'الربع الثاني 2026' -> 'الربع الأول 2026', or 'الربع الأول 2026' -> 'الربع الرابع 2025').
+    """
     try:
+        # Split the period string by separator to extract year and quarter text
         parts = period_str.split(" - ")
         year = int(parts[0].strip())
         q_text = parts[1].strip()
         
+        # Define the list of standard quarters in order
         quarters = ["الربع الأول", "الربع الثاني", "الربع الثالث", "الربع الرابع"]
         if q_text in quarters:
             idx = quarters.index(q_text)
+            # If it's not the first quarter, return the previous quarter of the same year
             if idx > 0:
                 return year, quarters[idx - 1]
             else:
+                # If it's the first quarter, return the fourth quarter of the previous year
                 return year - 1, "الربع الرابع"
     except:
         pass
     return None, None
 
 def fetch_specific_period_data(year_val, period_val):
-    """جلب بيانات ربع معين مباشرة من قاعدة البيانات"""
+    """
+    Fetches raw indicator records and CSAT factor response data for a specific year and quarter 
+    directly from the MySQL database.
+    """
     try:
+        # Establish connection to the MySQL database using specific credentials
         connection = pymysql.connect(
             host='localhost',
             port=3307,
@@ -49,6 +66,7 @@ def fetch_specific_period_data(year_val, period_val):
             cursorclass=pymysql.cursors.DictCursor
         )
         with connection.cursor() as cursor:
+            # SQL query to fetch indicator responses and names for the given year and period
             query = """
                 SELECT ind.IndicatorName, res.RatingValue AS CurrentValue
                 FROM individualmeasurementrecords mr
@@ -59,6 +77,7 @@ def fetch_specific_period_data(year_val, period_val):
             cursor.execute(query, (year_val, period_val))
             rows = cursor.fetchall()
             
+            # SQL query to fetch CSAT factor response records and names for the given year and period
             factor_query = """
                 SELECT f.FactorName, fr.RatingValue
                 FROM individualmeasurementrecords mr
@@ -68,27 +87,32 @@ def fetch_specific_period_data(year_val, period_val):
             """
             cursor.execute(factor_query, (year_val, period_val))
             f_rows = cursor.fetchall()
+        # Close the database connection safely
         connection.close()
         return rows, f_rows
     except:
         return [], []
 
 def calculate_metrics(rows, factors_rows):
+    """
+    Computes CES and NPS net scores (-100 to 100) and calculates 
+    percentage scores (0 to 100%) for each of the 8 CSAT factors.
+    """
     res_dict = {}
     
-    # حساب CES (-100 إلى 100)
+    # 1. Calculate CES (Customer Effort Score) net score ranging from -100 to 100
     ces_high = sum(1 for r in rows if "CES" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) >= 4)
     ces_low = sum(1 for r in rows if "CES" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) <= 2)
     ces_total = sum(1 for r in rows if "CES" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None)
     res_dict["CES"] = ((ces_high - ces_low) / ces_total * 100) if ces_total > 0 else None
     
-    # حساب NPS (-100 إلى 100)
+    # 2. Calculate NPS (Net Promoter Score) net score ranging from -100 to 100
     nps_p = sum(1 for r in rows if "NPS" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) >= 9)
     nps_d = sum(1 for r in rows if "NPS" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None and float(r.get('CurrentValue', 0)) <= 6)
     nps_total = sum(1 for r in rows if "NPS" in str(r.get('IndicatorName', '')).upper() and r.get('CurrentValue') is not None)
     res_dict["NPS"] = ((nps_p - nps_d) / nps_total * 100) if nps_total > 0 else None
     
-    # حساب عوامل CSAT الـ 8 (0 إلى 100%)
+    # 3. Group and calculate scores for each of the 8 CSAT factors as percentages (0 to 100%)
     factors_dict = {}
     for f in factors_rows:
         fname = f.get('FactorName', 'عامل')
@@ -114,31 +138,17 @@ def calculate_metrics(rows, factors_rows):
             
     return res_dict
 
-def get_previous_period(period_str):
-    """تحديد سنة وربع الفترة السابقة بدقة (مثال: الربع الأول 2026 -> الربع الرابع 2025)"""
-    try:
-        parts = period_str.split(" - ")
-        year = int(parts[0].strip())
-        q_text = parts[1].strip()
-        
-        quarters = ["الربع الأول", "الربع الثاني", "الربع الثالث", "الربع الرابع"]
-        if q_text in quarters:
-            idx = quarters.index(q_text)
-            if idx > 0:
-                return year, quarters[idx - 1]
-            else:
-                return year - 1, "الربع الرابع"
-    except:
-        pass
-    return None, None
-
 def build_summary_matrix(p_name, rows, factors_rows):
+    """
+    Builds a summary matrix matching current period metrics against 
+    automatically fetched previous period metrics for CES, NPS, and CSAT factors.
+    """
     summary_list = []
     
-    # 1. حساب الفترة الحالية المكتوبة في التقرير
+    # Step 1: Calculate metrics for the current period specified in the report
     curr_metrics = calculate_metrics(rows, factors_rows)
     
-    # 2. الانتقال تلقائياً للربع الذي يسبقه (حتى لو اخترتي فترة واحدة منفردة)
+    # Step 2: Automatically identify and fetch data for the preceding quarter period
     prev_year, prev_period_val = get_previous_period(p_name)
     prev_metrics = {}
     if prev_year and prev_period_val:
@@ -146,7 +156,7 @@ def build_summary_matrix(p_name, rows, factors_rows):
         if p_rows or p_f_rows:
             prev_metrics = calculate_metrics(p_rows, p_f_rows)
             
-    # CES (مع تعبئة Previous إذا وجدت بيانات الربع السابق)
+    # Append CES row data with current, target, and previous values
     c_ces = curr_metrics.get("CES")
     p_ces = prev_metrics.get("CES")
     summary_list.append({
@@ -156,7 +166,7 @@ def build_summary_matrix(p_name, rows, factors_rows):
         "Current": f"{c_ces:.2f}" if c_ces is not None else "-"
     })
     
-    # NPS (مع تعبئة Previous إذا وجدت بيانات الربع السابق)
+    # Append NPS row data with current, target, and previous values
     c_nps = curr_metrics.get("NPS")
     p_nps = prev_metrics.get("NPS")
     summary_list.append({
@@ -166,7 +176,7 @@ def build_summary_matrix(p_name, rows, factors_rows):
         "Current": f"{c_nps:.2f}" if c_nps is not None else "-"
     })
     
-    # CSAT Factors (مع تعبئة Previous لكل عامل إذا وجدت بيانات الربع السابق)
+    # Append each CSAT factor row with its corresponding current, target, and previous values
     for key, c_val in curr_metrics.items():
         if key.startswith("CSAT -"):
             p_val = prev_metrics.get(key)
@@ -180,12 +190,17 @@ def build_summary_matrix(p_name, rows, factors_rows):
     return summary_list
 
 def generate_excel(period, periods_data, factors_data):
+    """
+    Generates an Excel workbook using pandas and openpyxl, creating individual 
+    sheets for each period and applying custom gray-purple header styling.
+    """
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         for p_name, rows in periods_data.items():
             f_rows = factors_data.get(p_name, [])
             matrix = build_summary_matrix(p_name, rows, f_rows)
             df_period = pd.DataFrame(matrix)
+            # Reorder columns to match the desired format layout
             df_period = df_period[["Indicator", "Previous", "Target", "Current"]]
             safe_sheet_name = p_name.replace(" & ", "_")
             df_period.to_excel(writer, index=False, sheet_name=safe_sheet_name)
@@ -193,10 +208,12 @@ def generate_excel(period, periods_data, factors_data):
     buffer.seek(0)
     wb = load_workbook(buffer)
     
+    # Define professional header fill colors, fonts, and center alignments for Excel
     header_fill = PatternFill(start_color="7A7F94", end_color="7A7F94", fill_type="solid")
     header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
     alignment_center = Alignment(horizontal="center", vertical="center")
 
+    # Apply styles to header row cells across all workbook sheets
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
         for col_num in range(1, ws.max_column + 1):
@@ -211,10 +228,15 @@ def generate_excel(period, periods_data, factors_data):
     return final_buffer.getvalue(), f"Summary_Report_{period.replace(' ', '_')}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 def generate_pdf(period, periods_data, factors_data):
+    """
+    Generates a professionally styled PDF report document using ReportLab, 
+    incorporating dynamic headers, footers, custom fonts, and data tables.
+    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=(842, 595), rightMargin=40, leftMargin=40, topMargin=90, bottomMargin=30)
     elements = []
     
+    # Register TrueType Arabic font if available on the system path
     font_path = "C:\\Windows\\Fonts\\arial.ttf"
     font_name = "Helvetica" 
     if os.path.exists(font_path):
@@ -224,6 +246,7 @@ def generate_pdf(period, periods_data, factors_data):
     styles = getSampleStyleSheet()
     
     def add_header_footer(canvas_obj, document):
+        """Draws running header logos, titles, and bottom dividing lines on PDF pages."""
         canvas_obj.saveState()
         logo_path = "logo.png"
         if os.path.exists(logo_path):
@@ -239,6 +262,7 @@ def generate_pdf(period, periods_data, factors_data):
 
     elements.append(Spacer(1, 10))
 
+    # Define paragraph style for section headers
     section_title_style = ParagraphStyle(
         'SectionTitle',
         parent=styles['Heading2'],
@@ -251,6 +275,7 @@ def generate_pdf(period, periods_data, factors_data):
         keepWithNext=True
     )
 
+    # Define table column headers and custom column widths
     headers = [
         process_arabic_text("Current Value"), 
         process_arabic_text("Target Value"), 
@@ -259,6 +284,7 @@ def generate_pdf(period, periods_data, factors_data):
     ]
     col_widths = [120, 120, 120, 382]
 
+    # Iterate through periods and populate ReportLab tables
     for p_name, rows in periods_data.items():
         f_rows = factors_data.get(p_name, [])
         matrix = build_summary_matrix(p_name, rows, f_rows)
@@ -273,6 +299,7 @@ def generate_pdf(period, periods_data, factors_data):
             ]
             period_table_data.append([process_arabic_text(cell) for cell in row])
 
+        # Build and style the period summary table flowable
         t_period = Table(period_table_data, colWidths=col_widths)
         t_period.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#5a3e8d")),
@@ -287,12 +314,14 @@ def generate_pdf(period, periods_data, factors_data):
             ('TOPPADDING', (0, 0), (-1, -1), 8),
         ]))
         
+        # Wrap section title and table together to avoid splitting across pages
         period_block = KeepTogether([
             Paragraph(process_arabic_text(f"ملخص المؤشرات والعوامل للفترة: {p_name}"), section_title_style),
             t_period
         ])
         elements.append(period_block)
 
+    # Build the document layout using canvas headers/footers and element flowables
     doc.build(elements, onFirstPage=add_header_footer, onLaterPages=add_header_footer)
     
     return buffer.getvalue(), f"Summary_Report_{period.replace(' ', '_')}.pdf", "application/pdf"
