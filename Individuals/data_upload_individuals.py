@@ -26,10 +26,10 @@ import pandas as pd
 import streamlit as st
 
 try:
-    from individuals.individuals_column_mapper_ai import (
+    from Individuals.individuals_column_mapper_ai import (
         map_individual_columns_with_ai,
     )
-    from individuals.individuals_upload_backend import (
+    from Individuals.individuals_upload_backend import (
         VALID_PERIODS,
         get_factors,
         get_indicators,

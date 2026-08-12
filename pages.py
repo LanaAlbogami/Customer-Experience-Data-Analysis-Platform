@@ -395,7 +395,7 @@ def password_dialog():
             
     if col2.button("إلغاء", key="cancel_pwd", use_container_width=True):
         st.session_state["authenticated_management"] = False
-        st.switch_page("Dashboard.py")
+        st.switch_page("Departments/Dashboard.py")
 
 
 # ==================================================
@@ -405,33 +405,33 @@ def password_dialog():
 def _departments_pages():
     return [
         st.Page(
-            "Dashboard.py",
+            "Departments/Dashboard.py",
             title="لوحة المعلومات",
             icon=":material/dashboard:",
             default=True,
         ),
         st.Page(
-            "data_entry.py",
+            "Departments/data_entry.py",
             title="إدخال بيانات المؤشرات",
             icon=":material/add:",
         ),
         st.Page(
-            "data_upload.py",
+            "Departments/data_upload.py",
             title="رفع ملف Excel",
             icon=":material/upload_file:",
         ),
         st.Page(
-            "comments_page.py",
+            "Departments/comments_page.py",
             title="تحليل تعليقات العملاء",
             icon=":material/chat_bubble_outline:",
         ),
         st.Page(
-            "reports_page.py",
+            "Departments/reports_page.py",
             title="التقارير",
             icon=":material/description:",
         ),
         st.Page(
-            "management_page.py",
+            "Departments/management_page.py",
             title="التعديل",
             icon=":material/edit:",
         ),

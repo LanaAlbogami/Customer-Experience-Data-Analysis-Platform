@@ -34,6 +34,9 @@ _INDIVIDUALS_DIR = str(Path(__file__).parent / "Individuals")
 if _INDIVIDUALS_DIR not in sys.path:
     sys.path.insert(0, _INDIVIDUALS_DIR)
 
+_DEPARTMENTS_DIR = str(Path(__file__).parent / "Departments")
+if _DEPARTMENTS_DIR not in sys.path:
+    sys.path.insert(0, _DEPARTMENTS_DIR)
 
 # Landing-page colours.
 BG = COLORS["navy"]                # Page background — from style.py.
