@@ -2,9 +2,9 @@
 """
 comments_page.py
 ----------------
-تحليل التعليقات الحقيقية المخزنة في قاعدة بيانات الجهات.
+Analyzes real customer comments stored in the organizations database.
 
-مصدر التعليقات:
+Comment source:
     MeasurementRecords.Review
 """
 
@@ -31,13 +31,9 @@ from database.models import (
 )
 
 
-# إعداد متغيرات البيئة
+# Environment setup
 
 def get_env_path():
-<<<<<<< Updated upstream:Departments/comments_page.py
-    """البحث عن ملف .env داخل مجلدات المشروع."""
-=======
->>>>>>> Stashed changes:comments_page.py
     current_file = Path(__file__).resolve()
 
     candidates = [
@@ -62,8 +58,6 @@ def get_env_path():
         "لم يتم العثور على ملف .env. "
         "تأكدي أنه موجود في مجلد المشروع بجانب main.py."
     )
-<<<<<<< Updated upstream:Departments/comments_page.py
-=======
 
 
 ENV_PATH = get_env_path()
@@ -93,31 +87,30 @@ COMMENTS_BATCH_SIZE = int(
 print(f"[Gemini Sections] ENV file: {ENV_PATH}")
 print(f"[Gemini Sections] API key found: {bool(GEMINI_API_KEY)}")
 print(f"[Gemini Sections] Model: {GEMINI_MODEL}")
->>>>>>> Stashed changes:comments_page.py
 
 
-# تحديد مسار ملف البيئة
+# Locate the environment file
 ENV_PATH = get_env_path()
 
-# تحميل القيم من ملف .env
+# Load values from the .env file
 load_dotenv(
     dotenv_path=ENV_PATH,
     override=True,
 )
 
-# مفتاح Gemini
+# Gemini API key
 GEMINI_API_KEY = os.getenv(
     "GEMINI_API_KEY",
     "",
 ).strip()
 
-# اسم موديل Gemini
+# Gemini model name
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
     "gemini-3.6-flash",
 ).strip()
 
-# عدد التعليقات في كل دفعة تحليل
+# Number of comments per analysis batch
 COMMENTS_BATCH_SIZE = int(
     os.getenv(
         "COMMENTS_BATCH_SIZE",
@@ -130,7 +123,7 @@ print(f"[Gemini Sections] API key found: {bool(GEMINI_API_KEY)}")
 print(f"[Gemini Sections] Model: {GEMINI_MODEL}")
 
 
-# تنسيق الصفحة
+# Page styling
 
 st.markdown(
     """
@@ -318,7 +311,7 @@ st.markdown(
 )
 
 
-# تنظيف التعليقات واستبعاد القيم غير المفيدة
+# Clean comments and exclude irrelevant values
 
 IGNORED_COMMENTS = {
     "",
@@ -335,7 +328,7 @@ IGNORED_COMMENTS = {
 
 
 def clean_comment(value):
-    """تنظيف التعليق واستبعاد القيم غير المفيدة."""
+    """Clean a comment and exclude irrelevant values."""
     if value is None:
         return None
 
@@ -356,11 +349,11 @@ def clean_comment(value):
     return comment
 
 
-# قراءة التعليقات وبيانات الجهات من قاعدة البيانات
+# Read comments and organization data from the database
 
 @st.cache_data(ttl=60)
 def fetch_comments_from_db():
-    """قراءة التعليقات وتحويل كل سطر إلى تعليق مستقل."""
+    """Read comments and convert each line into a separate comment."""
     with SessionLocal() as session:
         rows = session.execute(
             select(
@@ -419,22 +412,14 @@ def fetch_comments_from_db():
     return comments
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# نماذج بيانات نتائج Gemini
-=======
-# شكل استجابة Gemini
->>>>>>> Stashed changes:comments_page.py
+# Gemini response models
 
-# بيانات السبب وعدد تكراره
+# Reason and occurrence count
 class Reason(BaseModel):
     name: str
     count: int
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# نتيجة تحليل دفعة واحدة
-=======
->>>>>>> Stashed changes:comments_page.py
 class BatchAnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -443,10 +428,6 @@ class BatchAnalysisResult(BaseModel):
     dissatisfaction_reasons: list[Reason]
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# النتيجة النهائية للتحليل
-=======
->>>>>>> Stashed changes:comments_page.py
 class AnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -466,10 +447,6 @@ AnalysisResult.model_rebuild(
 )
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# تعليمات Gemini لتحليل كل دفعة
-=======
->>>>>>> Stashed changes:comments_page.py
 BATCH_PROMPT = """
 أنت متخصص في تحليل تعليقات تجربة العملاء للجهات والخدمات باللغة العربية.
 
@@ -501,10 +478,6 @@ BATCH_PROMPT = """
 """
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# تعليمات Gemini لتجميع النتائج النهائية
-=======
->>>>>>> Stashed changes:comments_page.py
 FINAL_PROMPT = """
 أنت متخصص في تلخيص نتائج تحليل تجربة العملاء للجهات والخدمات.
 
@@ -536,11 +509,8 @@ FINAL_PROMPT = """
 """
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# إنشاء اتصال Gemini
+# Create the Gemini client
 
-=======
->>>>>>> Stashed changes:comments_page.py
 def _gemini_client():
     if not GEMINI_API_KEY:
         raise ValueError(
@@ -553,11 +523,8 @@ def _gemini_client():
     )
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# إرسال الطلب مع إعادة المحاولة عند الأخطاء المؤقتة
+# Send a structured request with retry handling
 
-=======
->>>>>>> Stashed changes:comments_page.py
 def _structured_request(
     client,
     prompt,
@@ -620,11 +587,8 @@ def _structured_request(
     raise last_error
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# تحليل دفعة واحدة من التعليقات
+# Analyze one batch of comments
 
-=======
->>>>>>> Stashed changes:comments_page.py
 def _analyze_batch(
     client,
     batch,
@@ -676,11 +640,8 @@ def _analyze_batch(
     )
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# دمج نتائج الدفعات وإنتاج الخلاصة والتوصية
+# Merge batch results and generate the final output
 
-=======
->>>>>>> Stashed changes:comments_page.py
 def _finalize_analysis(
     client,
     satisfaction_count,
@@ -724,99 +685,10 @@ neutral_count = {neutral_count}
     result.dissatisfaction_count = dissatisfaction_count
     result.neutral_count = neutral_count
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-=======
     return result
 
 
-def analyze_comments(data):
-    if not data:
-        raise ValueError(
-            "لا توجد تعليقات مطابقة للتحليل."
-        )
-
-    batches = [
-        data[index:index + COMMENTS_BATCH_SIZE]
-        for index in range(
-            0,
-            len(data),
-            COMMENTS_BATCH_SIZE,
-        )
-    ]
-
-    client = _gemini_client()
-
-    satisfaction_count = 0
-    dissatisfaction_count = 0
-    neutral_count = 0
-
-    satisfaction_reasons = []
-    dissatisfaction_reasons = []
-
-    progress_bar = st.progress(
-        0,
-        text=(
-            f"جاري تحليل {len(data)} تعليق "
-            f"على {len(batches)} دفعة..."
-        ),
-    )
-
-    for batch_number, batch in enumerate(
-        batches,
-        start=1,
-    ):
-        batch_result = _analyze_batch(
-            client,
-            batch,
-        )
-
-        satisfaction_count += (
-            batch_result.satisfaction_count
-        )
-        dissatisfaction_count += (
-            batch_result.dissatisfaction_count
-        )
-        neutral_count += (
-            batch_result.neutral_count
-        )
-
-        satisfaction_reasons.extend(
-            batch_result.satisfaction_reasons
-        )
-        dissatisfaction_reasons.extend(
-            batch_result.dissatisfaction_reasons
-        )
-
-        progress_bar.progress(
-            batch_number / len(batches),
-            text=(
-                f"جاري تحليل الدفعة "
-                f"{batch_number} من {len(batches)}"
-            ),
-        )
-
-    result = _finalize_analysis(
-        client=client,
-        satisfaction_count=satisfaction_count,
-        dissatisfaction_count=dissatisfaction_count,
-        neutral_count=neutral_count,
-        satisfaction_reasons=satisfaction_reasons,
-        dissatisfaction_reasons=dissatisfaction_reasons,
-    )
-
-    progress_bar.progress(
-        1.0,
-        text=(
-            f"تم تحليل جميع التعليقات: "
-            f"{len(data)} تعليق."
-        ),
-    )
-
->>>>>>> Stashed changes:comments_page.py
-    return result
-
-
-# تقسيم التعليقات إلى دفعات وتحليلها
+# Split comments into batches and analyze them
 
 def analyze_comments(data):
     if not data:
@@ -904,7 +776,97 @@ def analyze_comments(data):
     return result
 
 
-# عرض أعلى أسباب الرضا وعدم الرضا
+# Split comments into batches and analyze them
+
+def analyze_comments(data):
+    if not data:
+        raise ValueError(
+            "لا توجد تعليقات مطابقة للتحليل."
+        )
+
+    batches = [
+        data[index:index + COMMENTS_BATCH_SIZE]
+        for index in range(
+            0,
+            len(data),
+            COMMENTS_BATCH_SIZE,
+        )
+    ]
+
+    client = _gemini_client()
+
+    satisfaction_count = 0
+    dissatisfaction_count = 0
+    neutral_count = 0
+
+    satisfaction_reasons = []
+    dissatisfaction_reasons = []
+
+    progress_bar = st.progress(
+        0,
+        text=(
+            f"جاري تحليل {len(data)} تعليق "
+            f"على {len(batches)} دفعة..."
+        ),
+    )
+
+    for batch_number, batch in enumerate(
+        batches,
+        start=1,
+    ):
+        batch_result = _analyze_batch(
+            client,
+            batch,
+        )
+
+        satisfaction_count += (
+            batch_result.satisfaction_count
+        )
+        dissatisfaction_count += (
+            batch_result.dissatisfaction_count
+        )
+        neutral_count += (
+            batch_result.neutral_count
+        )
+
+        satisfaction_reasons.extend(
+            batch_result.satisfaction_reasons
+        )
+        dissatisfaction_reasons.extend(
+            batch_result.dissatisfaction_reasons
+        )
+
+        progress_bar.progress(
+            batch_number / len(batches),
+            text=(
+                f"جاري تحليل الدفعة "
+                f"{batch_number} من {len(batches)}"
+            ),
+        )
+
+    result = _finalize_analysis(
+        client=client,
+        satisfaction_count=satisfaction_count,
+        dissatisfaction_count=dissatisfaction_count,
+        neutral_count=neutral_count,
+        satisfaction_reasons=satisfaction_reasons,
+        dissatisfaction_reasons=dissatisfaction_reasons,
+    )
+
+    progress_bar.progress(
+        1.0,
+        text=(
+            f"تم تحليل جميع التعليقات: "
+            f"{len(data)} تعليق."
+        ),
+    )
+
+    return result
+
+
+# Display the top satisfaction and dissatisfaction reasons
+
+# Display the top five reasons
 
 def show_reasons(
     title,
@@ -948,7 +910,7 @@ def show_reasons(
     )
 
 
-# عنوان الصفحة
+# Page title
 
 st.markdown(
     '<div class="comments-title">تحليل تعليقات العملاء</div>',
@@ -966,7 +928,7 @@ st.markdown(
 )
 
 
-# تحميل التعليقات من قاعدة البيانات
+# Load comments from the database
 
 try:
     comments_data = fetch_comments_from_db()
@@ -985,7 +947,7 @@ if not comments_data:
     st.stop()
 
 
-# تجهيز وعرض الفلاتر
+# Prepare and display filters
 
 all_sections = sorted(
     {
@@ -1027,7 +989,7 @@ with filter1:
     )
 
 
-# تحديث الخدمات حسب القسم المحدد
+# Update services based on the selected section
 available_services = sorted(
     {
         item["service"]
@@ -1068,7 +1030,7 @@ with filter4:
     )
 
 
-# تطبيق الفلاتر على التعليقات
+# Apply filters to comments
 filtered_data = [
     item
     for item in comments_data
@@ -1093,7 +1055,7 @@ filtered_data = [
 ]
 
 
-# عرض عدد التعليقات ومعاينتها
+# Display comment count and preview
 
 info_col1, info_col2 = st.columns(
     [1, 2]
@@ -1133,11 +1095,7 @@ if not filtered_data:
     st.stop()
 
 
-<<<<<<< Updated upstream:Departments/comments_page.py
-# توسيط زر بدء التحليل
-=======
-# زر التحليل
->>>>>>> Stashed changes:comments_page.py
+# Analysis button
 
 _, center, _ = st.columns(
     [1, 1.5, 1]
@@ -1150,7 +1108,7 @@ with center:
     )
 
 
-# تنفيذ التحليل عند الضغط على الزر
+# Run the analysis when the button is clicked
 
 if analyze_button:
     with st.spinner(
@@ -1165,7 +1123,7 @@ if analyze_button:
                 "تم تحليل جميع التعليقات بنجاح."
             )
 
-            # عرض أعداد التعليقات حسب التصنيف
+            # Display comment counts by classification
             count_col1, count_col2, count_col3, count_col4 = st.columns(4)
 
             with count_col1:
@@ -1200,7 +1158,7 @@ if analyze_button:
                 "الأرقام تمثل عدد التعليقات، وليست بالضرورة عدد أشخاص مختلفين."
             )
 
-            # عرض أسباب الرضا وعدم الرضا
+            # Display satisfaction and dissatisfaction reasons
             col_right, col_left = st.columns(
                 2,
                 gap="large",
@@ -1220,7 +1178,7 @@ if analyze_button:
                     "negative-count",
                 )
 
-            # تجهيز التوصية للعرض داخل HTML
+            # Prepare the recommendation for HTML display
             safe_recommendation = html.escape(
                 result.smart_recommendation
             ).replace(
@@ -1242,7 +1200,7 @@ if analyze_button:
                 unsafe_allow_html=True,
             )
 
-            # تجهيز الخلاصة للعرض داخل HTML
+            # Prepare the summary for HTML display
             safe_summary = html.escape(
                 result.summary
             ).replace(

@@ -2,10 +2,10 @@
 """
 individuals/data_upload_individuals.py
 --------------------------------------
-صفحة رفع بيانات الأفراد مع مطابقة ذكية لأسماء أعمدة Excel.
+Individual data upload page with AI-based Excel column mapping.
 
-كل صف في الملف يمثل استبيان فرد واحد.
-Gemini يستقبل أسماء الأعمدة فقط.
+Each row in the file represents one individual survey response.
+Gemini receives column names only.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ except ModuleNotFoundError:
         save_individual_records,
     )
 
-# تحديث تلقائي لجدول النتائج المخزّن مؤقتًا (Cache) بعد كل رفع ناجح.
+# Automatically refresh cached result tables after a successful upload.
 try:
     from refresh_individual_cache import refresh as refresh_individual_cache
 except ModuleNotFoundError:
@@ -61,7 +61,7 @@ from style import apply_theme
 apply_theme()
 
 
-# تنسيق الصفحة
+# Page styling
 
 st.markdown(
     """
@@ -161,7 +161,7 @@ st.markdown(
 )
 
 
-# الثوابت
+# Constants
 
 NO_COLUMN = "غير موجود"
 
@@ -182,7 +182,7 @@ DEMOGRAPHIC_FIELDS = {
 }
 
 
-# أدوات مساعدة
+# Helper functions
 
 def mapping_signature(
     column_names,
@@ -270,7 +270,7 @@ def clear_review_state():
 
 def parse_year_quarter(value):
     """
-    استخراج السنة والربع من قيمة مثل:
+    Extract the year and quarter from values such as:
     الربع الأول 2026
     2026 Q2
     """
@@ -427,7 +427,7 @@ def combine_reviews(
     selected_columns,
 ):
     """
-    دمج أعمدة التعليقات التي اختارها المستخدم في عمود مؤقت واحد.
+    Combine the selected comment columns into one temporary column.
     """
     if not selected_columns:
         return dataframe, None
@@ -546,7 +546,7 @@ def validate_mapping(
     return errors
 
 
-# رأس الصفحة
+# Page header
 
 st.markdown(
     """
@@ -565,7 +565,7 @@ st.markdown(
 )
 
 
-# قراءة البيانات المرجعية
+# Read reference data
 
 try:
     factors = get_factors()
@@ -598,7 +598,7 @@ indicator_names = [
 ]
 
 
-# رفع الملف
+# Upload file
 
 uploaded_file = st.file_uploader(
     "ملف Excel",
@@ -664,7 +664,7 @@ if (
     ] = signature
 
 
-# إعداد الملف
+# File setup
 
 with st.container(
     border=True
@@ -760,7 +760,7 @@ if not mapping:
     st.stop()
 
 
-# ملخص المطابقة
+# Mapping summary
 
 gaps = required_gaps(
     mapping,
@@ -904,7 +904,7 @@ with st.container(
         )
 
 
-# القيم المقترحة
+# Suggested values
 
 individual_id_column = mapping.get(
     "individual_id_column"
@@ -984,7 +984,7 @@ indicator_columns = {
 }
 
 
-# المراجعة والتعديل
+# Review and edit mapping
 
 with st.expander(
     "مراجعة وتعديل المطابقة",
@@ -1238,7 +1238,7 @@ with st.expander(
                 )
 
 
-# التعليقات والحفظ
+# Comments and saving
 
 with st.container(
     border=True
@@ -1271,7 +1271,7 @@ with st.container(
     )
 
 
-# التحقق والحفظ
+# Validation and saving
 
 if save_clicked:
     errors = validate_mapping(
@@ -1374,8 +1374,7 @@ if save_clicked:
             )
 
         if result["ok"]:
-            # تحديث تلقائي للجدول المخزّن مؤقتًا فور نجاح الحفظ —
-            # ما تحتاجين تشغّلين أي سكربت يدوي بعد كذا أبدًا.
+            # Refresh the cached summary immediately after a successful save.
             if refresh_individual_cache is not None:
                 try:
                     refresh_individual_cache()
