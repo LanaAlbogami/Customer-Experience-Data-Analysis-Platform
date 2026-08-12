@@ -7,14 +7,14 @@ from style import apply_theme, COLORS
 
 apply_theme()
 
-# ---- ألوان الأدوار: تُستخدم بثبات لكل مؤشر (CSAT/CES/NPS) وبار تشارت العوامل ----
+# Defines consistent colors for current, target, and previous KPI values.
 ROLE_COLORS = {
-    "current": "#2FA88E",   # الحالي: أخضر
-    "target": "#F4B740",    # المستهدف: أصفر
-    "previous": "#1F3A5F",  # السابق: كحلي
+    "current": "#2FA88E",   # Current value
+    "target": "#F4B740",    # Target value
+    "previous": "#1F3A5F",  # Previous value
 }
 
-# ---- Force RTL + hide the auto header-link icon ----
+# Applies right-to-left layout and custom dashboard styling.
 st.markdown("""
 <style>
 .stApp, .stApp p, .stApp span, .stMarkdown, .stCaption,
@@ -25,7 +25,7 @@ div[data-testid="stMetricLabel"], div[data-testid="stMetricValue"] {
 }
 [data-testid="stHeaderActionElements"] { display: none; }
 
-/* حاويات الكروت الحقيقية (st.container(border=True)) */
+/* Styles bordered Streamlit containers as dashboard cards. */
 div[data-testid="stVerticalBlockBorderWrapper"] {
     border-radius: 16px !important;
     box-shadow: 0 5px 18px rgba(22, 33, 62, 0.05);
@@ -71,7 +71,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 .positive { background: #E4F6F1; color: #2FA88E; }
 .negative { background: #FCEBED; color: #C94B5B; }
 
-/* شرائح الفلاتر متعددة الاختيار (multiselect) — تصغير وترتيب */
+/* Styles multi-select controls for compact RTL display. */
 div[data-baseweb="select"] > div {
     direction: rtl;
 }
@@ -82,13 +82,13 @@ span[data-baseweb="tag"] {
     padding: 2px 6px !important;
 }
 
-/* تضييق القائمة المنسدلة (Popover) للفلاتر عشان ما يبين فراغ زايد */
+/* Keeps filter popovers compact. */
 div[data-testid="stPopoverBody"] {
     max-width: 280px;
     padding: 12px 16px !important;
 }
 
-/* ===== تصميم مخصص لفلاتر "عرض حسب" ===== */
+/* Custom styling for dashboard filter controls. */
 .filter-label {
     color: #6B7398;
     font-size: 13px;
@@ -97,7 +97,7 @@ div[data-testid="stPopoverBody"] {
     text-align: right;
 }
 
-/* البطاقة نفسها (Expander) */
+/* Styles filter expanders as clean cards. */
 div[data-testid="stExpander"] {
     border: 1.5px solid #E7E5F5 !important;
     border-radius: 12px !important;
@@ -121,7 +121,7 @@ div[data-testid="stExpanderDetails"] {
     padding: 6px 14px 14px 14px !important;
 }
 
-/* Checkbox كأنها Toggle Pill ملونة */
+/* Styles filter checkboxes as pill-like options. */
 div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"] {
     background: #F7F5FC;
     border-radius: 8px;
@@ -154,7 +154,7 @@ if not mock_records:
 
 
 def _average_ignoring_none(values):
-    """متوسط القيم المتوفرة فقط، أو None لو كلها فاضية."""
+    """Returns the average of available numeric values, ignoring missing entries."""
     numeric_values = [v for v in values if v is not None]
     if not numeric_values:
         return None
@@ -162,7 +162,7 @@ def _average_ignoring_none(values):
 
 
 def _number_or_none(value):
-    """تحويل القيمة إلى رقم، مع قبول None والقيم الفارغة."""
+    """Converts a value to a float while safely handling empty or invalid input."""
     if value is None or value == "":
         return None
 
@@ -173,7 +173,7 @@ def _number_or_none(value):
 
 
 def _display_table_value(value, kind=None):
-    """تنسيق القيم داخل القوائم والجداول."""
+    """Formats numeric values for display in dashboard tables and lists."""
     number = _number_or_none(value)
 
     if number is None:
@@ -185,17 +185,17 @@ def _display_table_value(value, kind=None):
     return f"{number:g}"
 
 
-# قيم مستهدفة افتراضية تُستخدم لما ما يكون فيه Target محفوظ فعليًا بالسجل
+# Default KPI targets used when no target value is stored in the database.
 DEFAULT_TARGETS = {"csat": 85, "ces": 69, "nps": 76}
 
 
 def _target_or_default(code, value):
-    """يرجع قيمة الهدف الفعلية، أو الافتراضية لو مافيه قيمة محفوظة."""
+    """Returns the stored target value or falls back to the default target."""
     number = _number_or_none(value)
     return DEFAULT_TARGETS[code] if number is None else number
 
 
-# ---- Filters: كل فلتر يقبل أكثر من اختيار، والنتيجة تُحسب كمتوسط للمطابقين ----
+# Builds dashboard filters that support multiple selections.
 st.subheader("عرض حسب")
 
 all_years = sorted({r["year"] for r in mock_records})
@@ -205,10 +205,7 @@ all_services = sorted({r["service"] for r in mock_records})
 
 
 def _sync_dept_with_services():
-    """
-    لما المستخدم يختار خدمة مباشرة، نحدد تلقائيًا القطاع (أو القطاعات)
-    المرتبطة بها، بدون ما نجبره يختار القطاع أول.
-    """
+    """Synchronizes department selections with the currently selected services."""
     selected = st.session_state.get("filter_service", [])
     if not selected:
         return
@@ -221,18 +218,11 @@ def _sync_dept_with_services():
 
 
 def _styled_multiselect(label, options, key, default=None):
-    """
-    فلتر مخصص بالكامل بشكل بطاقة أنيقة (بدل الشكل الافتراضي الرمادي):
-    عنوان الفلتر فوق، وتحته Expander يحتوي Checkbox لكل خيار +
-    "تحديد الكل"، بدون رقم عداد بالعنوان.
-
-    الملخص المعروض بعنوان الصندوق يُقرأ مباشرة من حالة كل Checkbox
-    (session_state الخاص بالودجت نفسه)، اللي تكون محدّثة فعليًا من
-    أول الـ script run — عشان ما يصير تأخر خطوة زي قبل.
-    """
+    """Creates a custom multi-select filter using an expander and checkboxes."""
     if default is None:
         default = options
 
+    # Reads the current checkbox state or falls back to its default selection.
     def _is_checked(option):
         state_k = f"{key}_opt_{option}"
         if state_k in st.session_state:
@@ -262,8 +252,7 @@ def _styled_multiselect(label, options, key, default=None):
             key=f"{key}_select_all",
         )
 
-        # لو ضغط "تحديد الكل"، نحدّث حالة كل Checkbox قبل ما ننشئها
-        # بهذا الـ run نفسه، عشان تنعكس فورًا.
+        # Updates all option states immediately when "Select All" is enabled.
         if select_all:
             for option in options:
                 st.session_state[f"{key}_opt_{option}"] = True
@@ -301,7 +290,7 @@ with row2_col2:
         "الخدمة", all_services, key="service", default=all_services
     )
 
-# لو أي فلتر انفضّى بالغلط، نرجعه تلقائيًا لـ"الكل" بدل ما نوقف الصفحة
+# Restores empty filters to "all" to keep the dashboard populated.
 if not selected_years:
     selected_years = list(all_years)
 if not selected_periods:
@@ -325,11 +314,7 @@ if not matching_records:
 
 
 def _combine_records(records):
-    """
-    يجمع سجل واحد أو أكثر في سجل موحّد:
-    - لو سجل واحد بس، يرجع كما هو (بدون أي حساب متوسط).
-    - لو أكثر من سجل، يحسب متوسط كل مؤشر وكل factor عبر السجلات كلها.
-    """
+    """Combines matching records by averaging KPI and factor values when needed."""
     if len(records) == 1:
         return records[0]
 
@@ -370,14 +355,15 @@ def _combine_records(records):
 
 rec = _combine_records(matching_records)
 
-# ---- KPI cards: دائرة نسبة + (مستهدف يمين صغير - حالي بالنص كبير - سابق يسار صغير) ----
+# Displays the main KPI cards with previous, current, and target values.
 LRM = "\u200e"
 st.subheader("المؤشرات الرئيسية")
 
-# ترتيب من اليمين لليسار: CSAT ثم CES ثم NPS
+# Keeps KPI cards ordered from right to left: CSAT, CES, then NPS.
 col_csat, col_ces, col_nps = st.columns(3)
 
 
+# Generates the SVG markup used to render a circular KPI indicator.
 def donut_svg(fill_percent, display_text, color, size=140, stroke=14, font_size=20, track_color="#DDE1EA"):
     fill_percent = min(max(fill_percent, 0), 100)
     r = (size - stroke) / 2
@@ -399,12 +385,7 @@ def donut_svg(fill_percent, display_text, color, size=140, stroke=14, font_size=
 
 
 def _normalize(value, kind):
-    """
-    تحديد نسبة امتلاء الحلقة بصريًا.
-
-    عند عدم وجود قيمة نستخدم صفرًا للحلقة،
-    بينما النص داخلها يظهر كشرطة.
-    """
+    """Normalizes KPI values into a 0–100 range for donut chart rendering."""
     number = _number_or_none(value)
 
     if number is None:
@@ -417,7 +398,7 @@ def _normalize(value, kind):
 
 
 def _display_value(value, kind):
-    """عرض القيمة الحقيقية أو شرطة عند عدم توفرها."""
+    """Formats a KPI value for display and shows a dash when it is unavailable."""
     number = _number_or_none(value)
 
     if number is None:
@@ -428,6 +409,7 @@ def _display_value(value, kind):
     return f"{rounded}%" if kind == "percent" else f"{rounded}"
 
 
+# Renders a complete KPI card with target, current, and previous indicators.
 def kpi_block(col, label, current, prev, target, kind):
     with col:
         with st.container(border=True):
@@ -437,7 +419,7 @@ def kpi_block(col, label, current, prev, target, kind):
             current_pct = _normalize(current, kind)
             prev_pct = _normalize(prev, kind)
 
-            # ترتيب من اليمين لليسار: المستهدف (صغير) - الحالي (كبير) - السابق (صغير)
+            # Arranges target, current, and previous values within each KPI card.
             c_target, c_current, c_prev = st.columns([1, 1.3, 1])
 
             with c_target:
@@ -489,7 +471,7 @@ kpi_block(
     kind="range",
 )
 
-# ---- أفضل 5 خدمات حسب CSAT (كرت أصغر) + مخطط المقارنة (كرت أوسع، ثلاث رسمات منفصلة) ----
+# Displays the top CSAT services and the KPI comparison charts.
 col_top5, col_chart = st.columns([0.8, 1.4])
 
 with col_top5:
@@ -532,8 +514,7 @@ with col_chart:
             unsafe_allow_html=True,
         )
 
-        # كل مؤشر يحتفظ بمقياسه الصحيح، لكن الهامش ثابت وموحّد للثلاثة
-        # عشان صندوق الرسم نفسه (الحدود) يكون بنفس المحاذاة والارتفاع.
+        # Uses each KPI's valid scale while keeping chart dimensions aligned.
         indicator_specs = [
             ("CSAT", rec.get("csat_prev"), rec.get("csat_current"), _target_or_default("csat", rec.get("csat_target")), [0, 100]),
             ("CES", rec.get("ces_prev"), rec.get("ces_current"), _target_or_default("ces", rec.get("ces_target")), [-100, 100]),
@@ -572,7 +553,7 @@ with col_chart:
                     plot_bgcolor="rgba(0,0,0,0)",
                     paper_bgcolor="rgba(0,0,0,0)",
                     height=320,
-                    margin=dict(l=50, r=10, t=10, b=45),  # هامش سفلي أكبر لنص المحور
+                    margin=dict(l=50, r=10, t=10, b=45),  # Keeps room for x-axis labels
                     font=dict(color="#16213E", size=12),
                     showlegend=False,
                 )
@@ -583,13 +564,13 @@ with col_chart:
                     zeroline=True,
                     zerolinecolor="#8A94B5",
                     zerolinewidth=2,
-                    automargin=False,  # عشان الهامش يبقى ثابت وما يختلف حسب طول الرقم
+                    automargin=False,  # Keeps chart margins consistent across KPIs
                     tickfont=dict(size=11),
                     dtick=25 if y_range[0] == 0 else 50,
                 )
                 mini_fig.update_xaxes(
                     showgrid=False,
-                    tickangle=0,          # يمنع ميلان النص
+                    tickangle=0,          # Keeps x-axis labels horizontal
                     tickfont=dict(size=11),
                 )
 
@@ -599,7 +580,7 @@ with col_chart:
                     config={"displayModeBar": False},
                 )
 
-# ---- توزيع CSAT حسب العوامل (Factors) للاختيار الحالي ----
+# Displays CSAT results grouped by the available factors.
 with st.container(border=True):
     st.markdown(
         '<div class="card-title" style="text-align:center;">CSAT حسب العوامل</div>',
@@ -620,7 +601,7 @@ with st.container(border=True):
         display_names_raw = factor_names[::-1]
         display_values = factor_values[::-1]
 
-        # نلف الأسماء الطويلة على سطرين بدل ما تتقطع أو تتراكب
+        # Wraps long factor names to prevent overlap in the chart.
         display_names = [
             "<br>".join(textwrap.wrap(name, width=28)) or name
             for name in display_names_raw
@@ -676,7 +657,7 @@ with st.container(border=True):
             config={"displayModeBar": False},
         )
 
-# ---- Recent records table (آخر 5 إدخالات ضمن الاختيار الحالي) ----
+# Displays the five most recent records for the active filters.
 st.subheader("أحدث الإدخالات")
 
 st.markdown("""
@@ -714,6 +695,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# Builds one HTML table row from a dashboard record.
 def make_row(r):
     section_name = (
         r.get("section")
@@ -739,8 +721,7 @@ def make_row(r):
     )
 
 
-# آخر 5 سجلات ضمن السجلات المطابقة للفلاتر (matching_records محفوظة بترتيب
-# الأحدث للأقدم لأن mock_records أصلاً مرتبة كذلك من data_service.py)
+# Uses the first five matching records, already ordered from newest to oldest.
 rows_html = "".join(make_row(r) for r in matching_records[:5])
 
 table_html = (
