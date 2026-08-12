@@ -5,18 +5,18 @@ from PIL import Image
 import app_mode
 
 
-# ==================================================
-# تجهيز الشعار وقص الفراغ الشفاف
-# ==================================================
+# Prepare the logo and crop away the transparent padding
 
 def prepare_logo():
     original_logo = Path("LogoWhite.png")
     cropped_logo = Path("LogoWhite_cropped.png")
 
+    # No source logo? Just return its path and let the caller handle it.
     if not original_logo.exists():
         return original_logo
 
     try:
+        # Re-crop only if the cropped file is missing or the original is newer.
         should_crop = (
             not cropped_logo.exists()
             or original_logo.stat().st_mtime
@@ -53,11 +53,10 @@ def prepare_logo():
 LOGO_PATH = prepare_logo()
 
 
-# ==================================================
-# إعداد الصفحة والشعار والتصميم
-# ==================================================
+# Page setup: config, logo, and styling
 
 def setup():
+    # Basic page configuration (title, favicon, wide layout, open sidebar).
     st.set_page_config(
         page_title="منصة تجربة العميل",
         page_icon=str(LOGO_PATH),
@@ -65,12 +64,16 @@ def setup():
         initial_sidebar_state="expanded",
     )
 
+    # Show the logo in the sidebar if the file exists.
     if LOGO_PATH.exists():
         st.logo(
             str(LOGO_PATH),
             size="large",
         )
 
+    # Inject the app's global CSS: loads the Tajawal font, sets a
+    # right-to-left layout, styles the dark sidebar and its navigation,
+    # the login dialog, and the mode-switch toggle pinned to the bottom.
     st.markdown(
         """
         <style>
@@ -340,14 +343,14 @@ def setup():
     )
 
 
-# ==================================================
-# زر التبديل بين الجهات والأفراد
-# ==================================================
+# Toggle for switching between government and individuals modes
 
 def _sidebar_mode_toggle():
+    # Read the current mode; label the toggle with the *current* mode's name.
     current_is_individuals = app_mode.is_individuals()
     label = "أفراد" if current_is_individuals else "جهات حكومية"
 
+    # Render the toggle inside a keyed container (styled by the CSS above).
     with st.sidebar:
         with st.container(key="mode_switch_box"):
             is_individuals = st.toggle(
@@ -362,14 +365,13 @@ def _sidebar_mode_toggle():
         else "departments"
     )
 
+    # If the toggle changed the mode, save it and rerun to reload the pages.
     if new_mode != app_mode.get_mode():
         app_mode.set_mode(new_mode)
         st.rerun()
 
 
-# ==================================================
-# نافذة كلمة المرور لحماية صفحة التعديل
-# ==================================================
+# Password dialog that protects the management (edit) page
 CORRECT_PASSWORD = "123"
 
 @st.dialog("تسجيل الدخول لصفحة التعديل")
@@ -398,17 +400,16 @@ def password_dialog():
         st.switch_page("Departments/Dashboard.py")
 
 
-# ==================================================
-# تعريف صفحات التطبيق
-# ==================================================
+# Application page definitions
 
 def _departments_pages():
+    # The pages shown in "government departments" mode, in sidebar order.
     return [
         st.Page(
             "Departments/Dashboard.py",
             title="لوحة المعلومات",
             icon=":material/dashboard:",
-            default=True,
+            default=True, # landing page for this mode
         ),
         st.Page(
             "Departments/data_entry.py",
@@ -439,12 +440,13 @@ def _departments_pages():
 
 
 def _individuals_pages():
+    # The pages shown in "individuals" mode, in sidebar order.
     return [
         st.Page(
             "Individuals/Dashboard_individuals.py",
             title="لوحة المعلومات",
             icon=":material/dashboard:",
-            default=True,
+            default=True, # landing page for this mode
         ),
         st.Page(
             "Individuals/data_upload_individuals.py",
@@ -465,36 +467,43 @@ def _individuals_pages():
 
 
 def _pages_for(mode):
+    # Pick the page list based on the active mode (defaults to departments)
     if mode == "individuals":
         return _individuals_pages()
     return _departments_pages()
 
 
-# ==================================================
-# تشغيل التطبيق
-# ==================================================
+# Run the application
 
 def run_app():
+
+    # Apply page config and styling.
     setup()
 
+    # Draw the mode-switch toggle in the sidebar.
     _sidebar_mode_toggle()
 
+    # Determine the active mode (default to departments).
     mode = app_mode.get_mode() or "departments"
 
+    # Build the sidebar navigation from the mode's pages.
     page = st.navigation(
         _pages_for(mode),
         position="sidebar",
         expanded=True,
     )
 
+    # Leaving the edit page clears authentication, so it's required again next time.
     if page.title != "التعديل":
         st.session_state["authenticated_management"] = False
 
+    # Entering the edit page requires the password dialog first.
     if page.title == "التعديل":
         if not st.session_state.get("authenticated_management", False):
             password_dialog()
             st.stop()
 
+    # Render the selected page.
     page.run()
 
 

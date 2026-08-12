@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-entry_backend.py
-----------------
-منطق الإدخال اليدوي ورفع ملفات Excel لقاعدة بيانات الأقسام والخدمات.
-"""
+# Logic for manual entry and Excel upload to the Departments/Services database.
 
 from __future__ import annotations
 
@@ -25,10 +21,9 @@ from database.models import (
 )
 
 
-# ==================================================
-# الفترات
-# لا يوجد جدول Period في التصميم، لذلك تبقى كقيم نظام ثابتة.
-# ==================================================
+# Periods
+# There is no Period table in the schema, so these are kept as
+# fixed system constants.
 
 PERIODS = {
     "النصف الأول": "النصف الأول",
@@ -36,47 +31,43 @@ PERIODS = {
 }
 
 
-# ==================================================
-# أدوات عامة
-# ==================================================
 
+# General helpers
+
+# Convert a numeric value to Decimal, preserving None
 def _to_decimal(value: Any) -> Decimal | None:
-    """تحويل قيمة رقمية إلى Decimal مع الحفاظ على None."""
     if value is None or value == "":
         return None
 
     return Decimal(str(value))
 
-
+# Check that the value falls within the indicator's allowed range.
 def _validate_range(
     value: Decimal,
     minimum: Decimal,
     maximum: Decimal,
     field_name: str,
 ) -> None:
-    """التحقق أن القيمة داخل نطاق المؤشر."""
     if value < minimum or value > maximum:
         raise ValueError(
             f"قيمة {field_name} خارج النطاق المسموح "
             f"({minimum} إلى {maximum}): {value}"
         )
 
-
+# Return the stored period names
 def get_period_codes() -> list[str]:
-    """إرجاع أسماء الفترات العربية المحفوظة."""
     return list(PERIODS.keys())
 
-
+# Return the period's display name.
 def period_label(code: str) -> str:
-    """إرجاع اسم الفترة العربية."""
     return PERIODS.get(code, code)
 
 
 def previous_period(year: int, period: str) -> tuple[int, str]:
     """
-    إرجاع الفترة السابقة:
-    النصف الثاني -> النصف الأول من نفس السنة
-    النصف الأول -> النصف الثاني من السنة السابقة
+    Return the previous period:
+    second half -> first half of the same year
+    first half  -> second half of the previous year
     """
     if period == "النصف الثاني":
         return year, "النصف الأول"
@@ -92,8 +83,8 @@ def previous_period(year: int, period: str) -> tuple[int, str]:
 
 def get_years():
     """
-    يرجع السنوات الموجودة في قاعدة البيانات،
-    ويضيف سنوات قريبة من السنة الحالية حتى يمكن إدخال بيانات جديدة.
+    Return the years present in the database, plus a few years around the
+    current year so new data can still be entered.
     """
 
     current_year = datetime.now().year
@@ -107,7 +98,7 @@ def get_years():
 
     available_years = set(database_years)
 
-    # سنوات الإدخال المتاحة حتى لو لم توجد لها بيانات مسبقًا
+    # Years available for data entry even if no data exists for them yet
     available_years.update(
         range(
             current_year - 2,
@@ -118,12 +109,10 @@ def get_years():
     return sorted(available_years)
 
 
-# ==================================================
-# الأقسام والخدمات من قاعدة البيانات
-# ==================================================
+# Sections and services from the database
 
+# Return the section names from the database.
 def get_sections() -> list[str]:
-    """إرجاع أسماء الأقسام من قاعدة البيانات."""
     with SessionLocal() as session:
         sections = session.scalars(
             select(Section)
@@ -138,8 +127,8 @@ def get_sections() -> list[str]:
 
 def get_departments() -> list[str]:
     """
-    اسم قديم للتوافق مع صفحة الإدخال الحالية.
-    داخليًا يعيد Sections وليس Departments.
+    Legacy name kept for compatibility with the current entry page.
+    Internally returns sections, not departments.
     """
     return get_sections()
 
@@ -153,12 +142,11 @@ def _get_section_by_name(
         .where(Section.section_name == section_name)
     )
 
-
+# Fetch the section, or create it when a new file is uploaded.
 def _get_or_create_section(
     session,
     section_name: str,
 ) -> Section:
-    """جلب القسم أو إنشاؤه عند رفع ملف جديد."""
     section_name = str(section_name).strip()
 
     if not section_name:
@@ -179,8 +167,8 @@ def _get_or_create_section(
     return section
 
 
+# Return the services of a specific section from the database.
 def get_services(section_name: str) -> list[str]:
-    """إرجاع خدمات قسم محدد من قاعدة البيانات."""
     with SessionLocal() as session:
         section = _get_section_by_name(
             session,
@@ -219,13 +207,12 @@ def _get_service(
         )
     )
 
-
+# Fetch the service within the section, or create it on upload.
 def _get_or_create_service(
     session,
     section: Section,
     service_name: str,
 ) -> Service:
-    """جلب الخدمة داخل القسم أو إنشاؤها عند الرفع."""
     service_name = str(service_name).strip()
 
     if not service_name:
@@ -250,9 +237,7 @@ def _get_or_create_service(
     return service
 
 
-# ==================================================
-# المؤشرات والعوامل من قاعدة البيانات
-# ==================================================
+# Indicators and factors from the database
 
 def _get_indicators(session) -> list[Indicator]:
     return list(
@@ -262,17 +247,11 @@ def _get_indicators(session) -> list[Indicator]:
         ).all()
     )
 
+# Return the indicators shown on the manual entry page.
 
 def get_indicator_codes(
     include_factor_based: bool = True,
 ) -> list[str]:
-    """
-    إرجاع المؤشرات المعروضة في صفحة الإدخال اليدوي.
-
-    تعرض الصفحة:
-    CSAT ثم CES ثم NPS فقط.
-    لا يظهر BPS في صفحة الإدخال اليدوي.
-    """
     preferred_order = ["CSAT", "CES", "NPS"]
 
     with SessionLocal() as session:
@@ -288,9 +267,8 @@ def get_indicator_codes(
         if code in existing_codes
     ]
 
-
+# Return a single indicator's data from the database.
 def get_indicator(code: str) -> dict[str, Any]:
-    """إرجاع بيانات مؤشر واحد من قاعدة البيانات."""
     with SessionLocal() as session:
         indicator = session.scalar(
             select(Indicator)
@@ -309,14 +287,12 @@ def get_indicator(code: str) -> dict[str, Any]:
             "is_factor_based": indicator.is_factor_based,
         }
 
-
+# Return the indicator name stored in the database.
 def indicator_name_ar(code: str) -> str:
-    """إرجاع اسم المؤشر المخزن في قاعدة البيانات."""
     return get_indicator(code).get("code", code)
 
-
+# Return the allowed range for the indicator.
 def indicator_bounds(code: str) -> tuple[float, float]:
-    """إرجاع النطاق المسموح للمؤشر."""
     indicator = get_indicator(code)
 
     return (
@@ -327,14 +303,12 @@ def indicator_bounds(code: str) -> tuple[float, float]:
 
 def is_higher_better(code: str) -> bool:
     """
-    مؤشرات المنصة الحالية الأعلى فيها أفضل.
-    لا يوجد عمود مخصص لهذا الخيار في التصميم الحالي.
-    """
+    For all current platform indicators, higher is better.
+    There is no dedicated column for this option in the current schema.    """
     return True
 
-
+# Return the seven factors in display order.
 def get_factors() -> list[dict[str, Any]]:
-    """إرجاع العوامل السبعة حسب ترتيب العرض."""
     with SessionLocal() as session:
         factors = session.scalars(
             select(Factor)
@@ -351,12 +325,9 @@ def get_factors() -> list[dict[str, Any]]:
         ]
 
 
+# Return the default target for the manual entry page.
+# The user can adjust the value before saving.
 def default_target(code: str) -> float | None:
-    """
-    إرجاع المستهدف الافتراضي لصفحة الإدخال اليدوي.
-
-    يمكن للمستخدم تعديل القيمة قبل الحفظ.
-    """
     targets = {
         "CSAT": 85.0,
         "CES": 76.0,
@@ -367,9 +338,7 @@ def default_target(code: str) -> float | None:
 
 
 
-# ==================================================
-# السجل السابق والقيم السابقة
-# ==================================================
+# Previous record and previous values
 
 def _find_measurement_record(
     session,
@@ -406,13 +375,13 @@ def _find_previous_record(
     )
 
 
+# Return the current indicator values from the previous period.
 def _previous_indicator_values(
     session,
     service_id: int,
     year: int,
     period: str,
 ) -> dict[str, Decimal]:
-    """إرجاع القيم الحالية للمؤشرات من الفترة السابقة."""
     previous_record = _find_previous_record(
         session,
         service_id,
@@ -445,13 +414,13 @@ def _previous_indicator_values(
     }
 
 
+# Return the factor results from the previous period.
 def _previous_factor_values(
     session,
     service_id: int,
     year: int,
     period: str,
 ) -> dict[str, Decimal]:
-    """إرجاع نتائج العوامل من الفترة السابقة."""
     previous_record = _find_previous_record(
         session,
         service_id,
@@ -484,13 +453,13 @@ def _previous_factor_values(
     }
 
 
+# Return the previous indicator values for the entry page.
 def get_previous_values(
     section: str,
     service: str,
     year: int,
     period: str,
 ) -> dict[str, float]:
-    """إرجاع قيم المؤشرات السابقة لصفحة الإدخال."""
     with SessionLocal() as session:
         service_row = _get_service(
             session,
@@ -514,17 +483,15 @@ def get_previous_values(
         }
 
 
-# ==================================================
-# الإدخال اليدوي
-# ==================================================
+# Manual entry
 
+# Check whether a record already exists for the same service and period.
 def entry_exists(
     section: str,
     service: str,
     year: int,
     period: str,
 ) -> bool:
-    """التحقق من وجود سجل للخدمة والفترة نفسها."""
     with SessionLocal() as session:
         service_row = _get_service(
             session,
@@ -548,7 +515,7 @@ def entry_exists(
 def _has_current_value(row: dict[str, Any]) -> bool:
     return row.get("current") is not None
 
-
+# Validate the manual entry data.
 def validate_entry(
     section: str,
     service: str,
@@ -556,7 +523,6 @@ def validate_entry(
     period: str,
     typed_values: dict[str, dict[str, Any]],
 ) -> list[str]:
-    """التحقق من بيانات الإدخال اليدوي."""
     errors = []
 
     if period not in PERIODS:
@@ -601,11 +567,11 @@ def save_entry(
     review: str | None = None,
 ) -> dict[str, Any]:
     """
-    حفظ الإدخال اليدوي للمؤشرات المعروضة في الصفحة.
+    Save the manual entry for the indicators shown on the page.
 
-    يمكن إدخال CSAT هنا على أنه المتوسط المحسوب مسبقًا،
-    بينما رفع Excel يستمر في حساب CSAT من نتائج العوامل.
-    TargetValue اختياري.
+    CSAT can be entered here as a pre-computed average, whereas the Excel
+    upload keeps calculating CSAT from the factor results.
+    TargetValue is optional.
     """
     errors = validate_entry(
         section,
@@ -723,10 +689,10 @@ def save_entry(
             }
 
 
-# ==================================================
-# رفع ملفات Excel
-# ==================================================
 
+# Excel file uploads
+
+# Merge review comments without duplicating them.
 def _append_review(
     old_review: str | None,
     new_review: str | None,
@@ -834,8 +800,8 @@ def _upsert_indicator_result(
         result.target_value = target_value
 
 
+# Support both the new dict shape and the simplified numeric shape.
 def _factor_current_value(payload: Any) -> Any:
-    """دعم الشكل الجديد والشكل الرقمي المبسط."""
     if isinstance(payload, dict):
         return payload.get("current_value")
 
@@ -882,21 +848,19 @@ def save_uploaded_records(
     factor_targets: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
-    حفظ سجلات ملف Excel.
+    Save records from an Excel file.
 
     targets:
-        مستهدفات المؤشرات العامة، مثل:
-        {"CSAT": 85, "CES": 70}
+        Global indicator targets, e.g. {"CSAT": 85, "CES": 70}
 
     factor_targets:
-        مستهدفات العوامل، مثل:
-        {"سهولة الاستخدام": 90}
+        Factor targets, e.g. {"سهولة الاستخدام": 90}
 
-    ويمكن لكل سجل تمرير:
+    Each record may also pass its own:
         indicator_targets
         factor_targets
 
-    لا توجد مستهدفات افتراضية ثابتة في الكود.
+    There are no fixed default targets hard-coded here.
     """
     if not records:
         return {
@@ -1146,10 +1110,8 @@ def save_uploaded_records(
                     or {}
                 )
 
-                # ------------------------------------------
-                # CSAT يُحسب من نتائج العوامل ولا يؤخذ
-                # من قيمة مرفوعة يدويًا.
-                # ------------------------------------------
+                # CSAT is calculated from the factor results,
+                # not taken from a manually uploaded value.
 
                 if current_factor_values:
                     csat_value = (
@@ -1189,9 +1151,7 @@ def save_uploaded_records(
 
                     saved_indicators += 1
 
-                # ------------------------------------------
-                # المؤشرات غير المعتمدة على عوامل
-                # ------------------------------------------
+                # Non-factor-based indicators
 
                 for code, raw_value in uploaded_indicators.items():
                     if code == "CSAT" or raw_value is None:
@@ -1277,9 +1237,7 @@ def save_uploaded_records(
             }
 
 
-# ==================================================
-# القراءة والحذف للاختبار
-# ==================================================
+# Read and delete (for testing)
 
 def get_all_records() -> list[dict[str, Any]]:
     """إرجاع نتائج المؤشرات المحفوظة."""
@@ -1354,8 +1312,8 @@ def get_all_records() -> list[dict[str, Any]]:
 
 def clear_all_records() -> None:
     """
-    حذف نتائج القياس للاختبار فقط.
-    الأقسام والخدمات والمؤشرات والعوامل لا تُحذف.
+    Delete measurement results (for testing only).
+    Sections, services, indicators, and factors are not deleted.
     """
     with SessionLocal() as session:
         try:
