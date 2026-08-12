@@ -20,15 +20,10 @@ from database_individuals.models import (
     IndividualProfile,
 )
 
-# ==================================================
-# تحميل ملف .env بشكل موثوق
-# ==================================================
+# إعداد متغيرات البيئة
 
 def get_env_path():
-    """
-    يبحث عن .env سواء كانت الصفحة داخل individuals/
-    أو تم نقلها لمجلد آخر.
-    """
+    """البحث عن ملف .env داخل مجلدات المشروع."""
     current_file = Path(__file__).resolve()
 
     candidates = [
@@ -55,23 +50,28 @@ def get_env_path():
     )
 
 
+# تحديد مسار ملف البيئة
 ENV_PATH = get_env_path()
 
+# تحميل القيم من ملف .env
 load_dotenv(
     dotenv_path=ENV_PATH,
     override=True,
 )
 
+# مفتاح Gemini
 GEMINI_API_KEY = os.getenv(
     "GEMINI_API_KEY",
     "",
 ).strip()
 
+# اسم موديل Gemini
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
     "gemini-3.6-flash",
 ).strip()
 
+# عدد التعليقات في كل دفعة تحليل
 COMMENTS_BATCH_SIZE = int(
     os.getenv(
         "COMMENTS_BATCH_SIZE",
@@ -84,6 +84,7 @@ print(f"[Gemini] ENV file: {ENV_PATH}")
 print(f"[Gemini] API key found: {bool(GEMINI_API_KEY)}")
 print(f"[Gemini] Model: {GEMINI_MODEL}")
 
+# تنسيق الصفحة
 st.markdown(
     """
     <style>
@@ -251,6 +252,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# تعليقات لا يتم احتسابها في التحليل
 IGNORED_COMMENTS = {
     "",
     "لا يوجد تعليق",
@@ -264,6 +266,8 @@ IGNORED_COMMENTS = {
     "null",
 }
 
+
+# تنظيف التعليق واستبعاد القيم الفارغة
 
 def clean_comment(value):
     if value is None:
@@ -281,6 +285,7 @@ def clean_comment(value):
     return comment
 
 
+# قراءة التعليقات وبيانات الأفراد من قاعدة البيانات
 @st.cache_data(ttl=60)
 def fetch_comments_from_db():
     with SessionLocal() as session:
@@ -331,11 +336,13 @@ def fetch_comments_from_db():
     return comments
 
 
+# شكل بيانات السبب
 class Reason(BaseModel):
     name: str
     count: int
 
 
+# نتيجة تحليل دفعة واحدة
 class BatchAnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -344,6 +351,7 @@ class BatchAnalysisResult(BaseModel):
     dissatisfaction_reasons: list[Reason]
 
 
+# النتيجة النهائية للتحليل
 class AnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -363,6 +371,7 @@ AnalysisResult.model_rebuild(
 )
 
 
+# تعليمات Gemini لتحليل كل دفعة
 BATCH_PROMPT = """
 أنت متخصص في تحليل تعليقات تجربة العملاء للأفراد باللغة العربية.
 
@@ -392,6 +401,7 @@ BATCH_PROMPT = """
 """
 
 
+# تعليمات Gemini لتجميع النتائج النهائية
 FINAL_PROMPT = """
 أنت متخصص في تلخيص نتائج تحليل تجربة العملاء للأفراد.
 
@@ -422,6 +432,8 @@ FINAL_PROMPT = """
 """
 
 
+# إنشاء اتصال Gemini
+
 def _gemini_client():
     if not GEMINI_API_KEY:
         raise ValueError(
@@ -433,6 +445,8 @@ def _gemini_client():
         api_key=GEMINI_API_KEY
     )
 
+
+# إرسال الطلب مع إعادة المحاولة عند الأخطاء المؤقتة
 
 def _structured_request(
     client,
@@ -491,6 +505,8 @@ def _structured_request(
     raise last_error
 
 
+# تحليل دفعة واحدة من التعليقات
+
 def _analyze_batch(
     client,
     comments,
@@ -535,6 +551,8 @@ def _analyze_batch(
         "تعذر تصنيف جميع تعليقات إحدى الدفعات."
     )
 
+
+# دمج نتائج الدفعات وإنتاج الخلاصة والتوصية
 
 def _finalize_analysis(
     client,
@@ -582,6 +600,8 @@ neutral_count = {neutral_count}
 
     return result
 
+
+# تقسيم التعليقات إلى دفعات وتحليلها
 
 def analyze_comments(data):
     if not data:
@@ -679,6 +699,8 @@ def analyze_comments(data):
 
     return result
 
+# عرض أعلى خمسة أسباب داخل بطاقة
+
 def show_reasons(title, reasons, badge_class):
     top_reasons = sorted(
         reasons,
@@ -716,6 +738,7 @@ def show_reasons(title, reasons, badge_class):
     )
 
 
+# عنوان الصفحة
 st.markdown(
     '<div class="comments-title">تحليل تعليقات الأفراد</div>',
     unsafe_allow_html=True,
@@ -731,6 +754,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# تحميل التعليقات من قاعدة البيانات
 try:
     comments_data = fetch_comments_from_db()
 except Exception as error:
@@ -746,6 +770,7 @@ if not comments_data:
     st.stop()
 
 
+# تجهيز خيارات الفلاتر
 all_genders = sorted(
     {item["gender"] for item in comments_data}
 )
@@ -778,6 +803,7 @@ all_periods = [
 ]
 
 
+# عرض الفلاتر في صف واحد
 filter1, filter2, filter3, filter4, filter5 = st.columns(5)
 
 with filter1:
@@ -811,6 +837,7 @@ with filter5:
     )
 
 
+# تطبيق الفلاتر على التعليقات
 filtered_data = [
     item
     for item in comments_data
@@ -839,6 +866,7 @@ filtered_data = [
 ]
 
 
+# عرض عدد التعليقات ومعاينتها
 info_col1, info_col2 = st.columns([1, 2])
 
 with info_col1:
@@ -875,6 +903,7 @@ if not filtered_data:
 
 
 
+# توسيط زر بدء التحليل
 _, center, _ = st.columns([1, 1.5, 1])
 
 with center:
@@ -884,6 +913,7 @@ with center:
     )
 
 
+# تنفيذ التحليل عند الضغط على الزر
 if analyze_button:
     with st.spinner(
         "جاري تحليل التعليقات..."
@@ -897,6 +927,7 @@ if analyze_button:
                 "تم تحليل جميع التعليقات بنجاح."
             )
 
+            # عرض أعداد التعليقات حسب التصنيف
             count_col1, count_col2, count_col3, count_col4 = st.columns(4)
 
             with count_col1:
@@ -931,6 +962,7 @@ if analyze_button:
                 "الأرقام تمثل عدد التعليقات، وليست بالضرورة عدد أفراد مختلفين."
             )
 
+            # عرض أسباب الرضا وعدم الرضا
             col_right, col_left = st.columns(
                 2,
                 gap="large",
@@ -950,6 +982,7 @@ if analyze_button:
                     "negative-count",
                 )
 
+            # تجهيز التوصية للعرض داخل HTML
             safe_recommendation = html.escape(
                 result.smart_recommendation
             ).replace(
@@ -971,6 +1004,7 @@ if analyze_button:
                 unsafe_allow_html=True,
             )
 
+            # تجهيز الخلاصة للعرض داخل HTML
             safe_summary = html.escape(
                 result.summary
             ).replace(
@@ -997,8 +1031,3 @@ if analyze_button:
                 f"حدث خطأ أثناء التحليل: {error}"
             )
 
-
-st.caption(
-    "مصدر البيانات: التعليقات المحفوظة في "
-    "IndividualMeasurementRecords.Review"
-)
