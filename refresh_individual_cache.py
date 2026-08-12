@@ -1,15 +1,13 @@
 """
-refresh_individual_cache.py
-----------------------------
-يحسب نتيجة CSAT العامة (لكل factor + المتوسط الكلي) ونتيجة NPS وCES
-(بدون أي فلاتر)، ويخزنها بجدول IndividualDashboardCache.
+Calculates the overall CSAT results, factor-level CSAT values, NPS, and CES
+without applying filters, then stores the results in IndividualDashboardCache.
 
-شغّليه:
-1) أول مرة بعد ما تبنين الجدول الجديد.
-2) بعد كل مرة ترفعين بيانات أفراد جديدة (Excel).
+Run this script:
+1. After creating the cache table for the first time.
+2. After importing new individual survey data from Excel.
 
-الأمر (من جذر المشروع):
-    python -m refresh_individual_cache
+Command from the project root:
+python -m refresh_individual_cache
 """
 
 from datetime import datetime
@@ -34,6 +32,7 @@ except ModuleNotFoundError:
 
 
 def _upsert(session, metric_name, value, participants_count):
+    """Creates a cache record or updates the existing record for the given metric."""
     row = (
         session.query(IndividualDashboardCache)
         .filter_by(metric_name=metric_name)
@@ -57,6 +56,7 @@ def _upsert(session, metric_name, value, participants_count):
 
 
 def refresh():
+    """Recalculates all individual dashboard metrics and refreshes the cache table."""
     dataset = fetch_individual_dataset()
     factor_order = fetch_factor_order()
     indicator_names = fetch_indicator_names()
@@ -66,6 +66,7 @@ def refresh():
     session = SessionLocal()
 
     try:
+        # Stores the overall CSAT result for all individual responses.
         _upsert(
             session,
             "CSAT_OVERALL",
@@ -73,6 +74,7 @@ def refresh():
             aggregated["participants_total"],
         )
 
+        # Stores the calculated CSAT result for each individual factor.
         for factor_name, factor_data in aggregated["factors"].items():
             _upsert(
                 session,
@@ -81,6 +83,7 @@ def refresh():
                 factor_data.get("participants_count", 0),
             )
 
+        # Stores the calculated results for additional indicators such as NPS and CES.
         for indicator_name, indicator_data in aggregated["indicators"].items():
             _upsert(
                 session,
@@ -97,11 +100,13 @@ def refresh():
         )
 
     except Exception as error:
+        # Rolls back pending cache updates if any operation fails.
         session.rollback()
         print(f"خطأ أثناء تحديث الجدول المخزّن: {error}")
         raise
 
     finally:
+        # Always closes the database session after the refresh process finishes.
         session.close()
 
 
