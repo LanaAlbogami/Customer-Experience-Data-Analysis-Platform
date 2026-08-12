@@ -11,8 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database_individuals.connection import Base
 
-
-# القيم المقبولة لعمود الفترة (يخزن نص عربي مباشرة، بدون كود مختصر)
+# Defines the valid reporting periods stored directly as Arabic text.
 VALID_PERIODS = (
     "الربع الأول",
     "الربع الثاني",
@@ -20,11 +19,7 @@ VALID_PERIODS = (
     "الربع الرابع",
 )
 
-
-# ==================================================
-# ملف الأفراد
-# البيانات الديموغرافية والتصنيفية لكل فرد
-# ==================================================
+# Stores demographic and classification information for each individual.
 class IndividualProfile(Base):
     __tablename__ = "IndividualProfiles"
 
@@ -76,10 +71,7 @@ class IndividualProfile(Base):
     )
 
 
-# ==================================================
-# سجلات القياس
-# كل سجل يمثل استبيان واحد عبّاه فرد معين في سنة وفترة محددة
-# ==================================================
+# Represents one survey submission for an individual within a specific year and period.
 class IndividualMeasurementRecord(Base):
     __tablename__ = "IndividualMeasurementRecords"
 
@@ -142,9 +134,7 @@ class IndividualMeasurementRecord(Base):
     )
 
 
-# ==================================================
-# عوامل CSAT الثمانية الثابتة (نفس الأسماء المستخدمة بقاعدة الجهات)
-# ==================================================
+# Stores the predefined CSAT factors shared across individual survey records.
 class SharedCSATFactor(Base):
     __tablename__ = "SharedCSATFactors"
 
@@ -174,11 +164,8 @@ class SharedCSATFactor(Base):
     )
 
 
-# ==================================================
-# إجابة كل فرد لكل عامل من عوامل CSAT (بيانات خام، رقم من 1 إلى 5)
-# CSAT% لأي عامل أو بشكل عام يُحسب وقت الاستعلام من هذا الجدول،
-# ولا يُخزَّن جاهزًا هنا.
-# ==================================================
+# Stores each individual's raw 1-5 response for a specific CSAT factor.
+# CSAT percentages are calculated from these responses when needed.
 class IndividualFactorResponse(Base):
     __tablename__ = "IndividualFactorResponses"
 
@@ -230,10 +217,8 @@ class IndividualFactorResponse(Base):
     )
 
 
-# ==================================================
-# المؤشرات الأخرى (CES, NPS...) بدون CSAT
-# CSAT هنا محسوب بالكامل من IndividualFactorResponses أعلاه
-# ==================================================
+# Defines additional survey indicators such as CES and NPS.
+# CSAT is calculated separately from the factor response table.
 class SharedIndicator(Base):
     __tablename__ = "SharedIndicators"
 
@@ -274,9 +259,7 @@ class SharedIndicator(Base):
     )
 
 
-# ==================================================
-# إجابة كل فرد لكل مؤشر آخر غير CSAT (بيانات خام)
-# ==================================================
+# Stores each individual's raw response for non-CSAT indicators.
 class IndividualIndicatorResponse(Base):
     __tablename__ = "IndividualIndicatorResponses"
 
@@ -324,12 +307,8 @@ class IndividualIndicatorResponse(Base):
     )
 
 
-# ==================================================
-# جدول النتائج المخزّنة مؤقتًا (Cache)
-# يخزن النتيجة العامة (بدون فلاتر) لكل factor ومؤشر، عشان الداشبورد
-# يقرأها جاهزة بدل ما يعيد حسابها من الصفر كل مرة تُفتح فيها الصفحة.
-# يُحدَّث بعد كل رفع بيانات جديدة عن طريق refresh_individual_cache.py
-# ==================================================
+# Stores precomputed dashboard metrics to reduce repeated calculations during page loads.
+# The cache is refreshed after new individual survey data is imported.
 class IndividualDashboardCache(Base):
     __tablename__ = "IndividualDashboardCache"
 

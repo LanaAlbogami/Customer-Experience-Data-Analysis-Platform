@@ -2,9 +2,7 @@ import math
 import os
 import sys
 
-# نضيف جذر المشروع (المجلد فوق Individuals/) لمسار البحث، عشان
-# استيراد "style" (اللي موجود بجذر المشروع) يشتغل حتى لو شغّلنا
-# هذا الملف مباشرة بدل ما يشتغل عن طريق app.py.
+# Add the project root and Individuals directory to the import path so shared modules work when this file runs directly.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -22,15 +20,14 @@ ROLE_COLORS = {
 
 DEFAULT_TARGETS = {"csat": 85, "nps": 76, "ces": 69}
 
-# ترتيب الفترات، يُستخدم لحساب "الفترة السابقة" لأي فترة معطاة
+# Defines the chronological period order used to determine the previous reporting period.
 PERIOD_ORDER = ["الربع الأول", "الربع الثاني", "الربع الثالث", "الربع الرابع"]
 
 
 def _previous_year_period(year, period):
     """
-    يرجع (السنة, الفترة) اللي قبل السنة والفترة المعطاة.
-    مثال: (2026, "الربع الثاني") -> (2026, "الربع الأول")
-          (2026, "الربع الأول")  -> (2025, "الربع الرابع")
+    Returns the year and reporting period immediately preceding the provided period.
+    Handles year transitions when the current period is the first quarter.
     """
     if period not in PERIOD_ORDER:
         return None, None
@@ -40,7 +37,7 @@ def _previous_year_period(year, period):
     return year, PERIOD_ORDER[idx - 1]
 
 
-# ---- Force RTL + الأسلوب العام (نفس أسلوب داشبورد الجهات) ----
+# Applies RTL layout and shared dashboard styling.
 st.markdown("""
 <style>
 .stApp, .stApp p, .stApp span, .stMarkdown, .stCaption,
@@ -145,6 +142,7 @@ indicator_names = fetch_indicator_names()
 
 
 def _number_or_none(value):
+    # Converts valid values to float while safely handling empty or invalid input.
     if value is None or value == "":
         return None
     try:
@@ -154,17 +152,16 @@ def _number_or_none(value):
 
 
 def _target_or_default(code, value):
+    # Returns the stored target value, or the configured default when no value is available.
     number = _number_or_none(value)
     return DEFAULT_TARGETS.get(code, 0) if number is None else number
 
 
-# ==================================================
-# فلاتر ديموغرافية متعددة الاختيار
-# ==================================================
-
+# Builds the demographic multi-select filters used to narrow the individual dataset.
 st.subheader("عرض حسب")
 
 def _distinct(field):
+    # Returns sorted unique non-empty values for a specific dataset field.
     return sorted({
         r[field] for r in dataset if r.get(field)
     })
@@ -180,7 +177,7 @@ all_devices = _distinct("device")
 
 
 def _styled_multiselect(label, options, key, default=None):
-    """فلتر ببطاقة أنيقة (Expander + Checkboxes) بدل الفقاعات الافتراضية."""
+    """Creates a custom expandable multi-select filter using checkboxes."""
     if not options:
         st.markdown(f'<div class="filter-label">{label}</div>', unsafe_allow_html=True)
         st.caption("لا توجد بيانات")
@@ -190,6 +187,7 @@ def _styled_multiselect(label, options, key, default=None):
         default = options
 
     def _is_checked(option):
+        # Reads the current checkbox state while falling back to the default selection.
         state_k = f"{key}_opt_{option}"
         if state_k in st.session_state:
             return st.session_state[state_k]
@@ -270,7 +268,7 @@ with row2c4:
 
 
 def _match(value, selected, all_values):
-    """يطابق لو القيمة داخل الاختيار، أو لو الفلتر أصلاً فاضي (يعني كل القيم)."""
+    """Checks whether a value matches the active filter selection."""
     if not all_values:
         return True
     if not selected:
@@ -296,7 +294,7 @@ if not matching_records:
 
 agg = aggregate_records(matching_records, factor_order, indicator_names)
 
-# ---- جيب بيانات نفس الفلاتر بس للفترة السابقة (عشان دائرة "السابق") ----
+# Retrieves records from the previous reporting period using the same demographic filters.
 prev_years = set()
 prev_periods = set()
 for y in (selected_years or all_years):
@@ -322,19 +320,16 @@ prev_agg = aggregate_records(prev_matching_records, factor_order, indicator_name
 
 st.caption(f"عدد الردود المطابقة للاختيار الحالي: {agg['participants_total']:,}")
 
-# ==================================================
-# دوائر KPI: CSAT و NPS (لا يوجد CES لبيانات الأفراد)
-# ==================================================
-
+# Displays the main KPI cards for CSAT and any additional supported indicators.
 st.subheader("المؤشرات الرئيسية")
 
-# نبني قائمة المؤشرات المعروضة ديناميكيًا: CSAT دايمًا موجود،
-# وأي مؤشر ثاني (NPS, CES...) يُضاف تلقائيًا لو موجود بقاعدة البيانات.
+# Adds NPS or CES dynamically when those indicators exist in the database.
 extra_indicators = [name for name in indicator_names if name.upper() in ("NPS", "CES")]
 kpi_cols = st.columns(1 + len(extra_indicators))
 
 
 def donut_svg(fill_percent, display_text, color, size=170, stroke=17, font_size=30, track_color="#DDE1EA"):
+    # Generates the SVG used to visualize a KPI value as a circular progress indicator.
     fill_percent = min(max(fill_percent, 0), 100)
     r = (size - stroke) / 2
     c = size / 2
@@ -355,6 +350,7 @@ def donut_svg(fill_percent, display_text, color, size=170, stroke=17, font_size=
 
 
 def _normalize(value, kind):
+    # Converts indicator values into a 0-100 range for donut chart rendering.
     number = _number_or_none(value)
     if number is None:
         return 0.0
@@ -364,6 +360,7 @@ def _normalize(value, kind):
 
 
 def _display_value(value, kind):
+    # Formats indicator values for display inside KPI cards.
     number = _number_or_none(value)
     if number is None:
         return "—"
@@ -373,9 +370,8 @@ def _display_value(value, kind):
 
 def kpi_block(col, label, previous, current, target, kind):
     """
-    يرسم بطاقة مؤشر فيها 3 دوائر منفصلة بنفس تصميم داشبورد الجهات:
-    السابق (يمين) - الحالي (بالنص، أكبر حجم) - المستهدف (يسار).
-    كل دائرة تعرض رقمها الخام بدون أي حساب فرق بينها.
+    Renders a KPI card containing previous, current, and target values.
+    The current value is emphasized using the larger center donut.
     """
     with col:
         with st.container(border=True):
@@ -428,10 +424,7 @@ for i, indicator_name in enumerate(extra_indicators, start=1):
         kind="range",
     )
 
-# ==================================================
-# CSAT حسب العوامل (نفس تصميم داشبورد الجهات)
-# ==================================================
-
+# Displays CSAT values across the configured demographic or experience factors.
 with st.container(border=True):
     st.markdown(
         '<div class="card-title" style="text-align:center;">CSAT حسب العوامل</div>',
@@ -482,10 +475,7 @@ with st.container(border=True):
     )
     st.plotly_chart(factor_fig, use_container_width=True, config={"displayModeBar": False})
 
-# ==================================================
-# أحدث المدخلات (آخر 5 ضمن الاختيار الحالي)
-# ==================================================
-
+# Displays the five most recent records that match the current filter selection.
 st.subheader("أحدث المدخلات")
 
 st.markdown("""
@@ -505,6 +495,7 @@ st.markdown("""
 
 
 def make_row(r):
+    # Builds one HTML table row for an individual survey record.
     return (
         f'<tr>'
         f'<td>{r.get("gender") or "—"}</td>'

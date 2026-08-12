@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-"""
-database_individuals/sync_reference_data.py
--------------------------------------------
-تجهيز عوامل ومؤشرات قاعدة بيانات الأفراد.
 
-تنبيه:
-هذا الملف يحذف عوامل الأفراد القديمة وإجاباتها، ثم يعيد إنشاء
-العوامل الثمانية الصحيحة.
+"""
+Initializes the CSAT factors and survey indicators used by the individuals database.
+
+Note:
+This script removes existing individual CSAT factors and their responses,
+then recreates the eight approved factors.
 """
 
 from sqlalchemy import delete, select
@@ -18,7 +17,6 @@ from database_individuals.models import (
     SharedIndicator,
 )
 
-
 INDIVIDUAL_FACTORS = [
     "المظهر العام",
     "اجراءات التسجيل",
@@ -29,7 +27,6 @@ INDIVIDUAL_FACTORS = [
     "قنوات التواصل للحصول على الدعم",
     "الدعم الفني",
 ]
-
 
 RAW_INDICATORS = [
     {
@@ -48,21 +45,22 @@ RAW_INDICATORS = [
 
 
 def sync_reference_data():
+    """Synchronizes the predefined CSAT factors and raw indicators with the database."""
     with SessionLocal() as session:
         try:
-            # حذف إجابات العوامل القديمة أولًا بسبب المفتاح الخارجي.
+            # Removes existing factor responses first to satisfy foreign key constraints.
             session.execute(
                 delete(IndividualFactorResponse)
             )
 
-            # حذف عوامل الجهات التي نُسخت سابقًا بالخطأ.
+            # Removes previously stored CSAT factors before recreating the approved list.
             session.execute(
                 delete(SharedCSATFactor)
             )
 
             session.flush()
 
-            # إدخال عوامل الأفراد الثمانية بالترتيب.
+            # Inserts the eight individual CSAT factors in their defined display order.
             for order, factor_name in enumerate(
                 INDIVIDUAL_FACTORS,
                 start=1,
@@ -74,7 +72,7 @@ def sync_reference_data():
                     )
                 )
 
-            # إضافة أو تحديث المؤشرات الخام للأفراد.
+            # Creates missing indicators or updates their existing configuration.
             for item in RAW_INDICATORS:
                 indicator = session.scalar(
                     select(SharedIndicator)
@@ -107,6 +105,7 @@ def sync_reference_data():
             )
 
         except Exception:
+            # Rolls back all changes if any part of the synchronization fails.
             session.rollback()
             raise
 
