@@ -24,7 +24,6 @@ import entry_backend as backend
 # ----------------------------------------------------------------------
 # Page setup
 # ----------------------------------------------------------------------
-st.set_page_config(page_title="إدخال بيانات المؤشرات", layout="wide")
 apply_theme()
 
 # Streamlit has no built-in right-to-left setting, so we add it as CSS.

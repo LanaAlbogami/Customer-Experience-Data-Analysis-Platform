@@ -12,7 +12,6 @@ import streamlit as st
 import plotly.graph_objects as go
 from style import apply_theme, COLORS
 
-st.set_page_config(page_title="لوحة رضا الأفراد", layout="wide")
 apply_theme()
 
 ROLE_COLORS = {
@@ -121,7 +120,7 @@ div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"] label p {
 st.title("لوحة مؤشرات تجربة العميل (أفراد)")
 
 try:
-    from individuals.data_service_individuals import (
+    from Individuals.data_service_individuals import (
         aggregate_records,
         fetch_factor_order,
         fetch_indicator_names,

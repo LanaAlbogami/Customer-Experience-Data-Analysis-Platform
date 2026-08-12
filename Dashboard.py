@@ -5,7 +5,6 @@ import streamlit as st
 import plotly.graph_objects as go
 from style import apply_theme, COLORS
 
-st.set_page_config(page_title="لوحة المعلومات", layout="wide")
 apply_theme()
 
 # ---- ألوان الأدوار: تُستخدم بثبات لكل مؤشر (CSAT/CES/NPS) وبار تشارت العوامل ----
