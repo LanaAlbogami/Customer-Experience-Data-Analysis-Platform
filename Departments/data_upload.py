@@ -2,10 +2,10 @@
 """
 data_upload.py
 --------------
-صفحة رفع بيانات الأقسام والخدمات مع مطابقة ذكية لأسماء الأعمدة.
+Data upload page for sections and services with AI-based column mapping.
 
-يرسل النظام إلى Gemini أسماء الأعمدة فقط، ولا يرسل محتوى الصفوف
-أو إجابات العملاء أو التعليقات.
+Only column names are sent to Gemini. Row content,
+customer responses, and comments are not sent.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from style import apply_theme
 apply_theme()
 
 
-# تنسيق الصفحة
+# Page styling
 
 st.markdown(
     """
@@ -127,7 +127,7 @@ st.markdown(
 )
 
 
-# الثوابت
+# Constants
 
 NO_COLUMN = "غير موجود"
 
@@ -164,7 +164,9 @@ REVIEW_WIDGET_KEYS = [
 ]
 
 
-# أدوات مساعدة
+# Helper functions
+
+# Create a unique signature for the current mapping setup
 
 def mapping_signature(column_names, factor_names, data_mode):
     payload = json.dumps(
@@ -182,6 +184,8 @@ def mapping_signature(column_names, factor_names, data_mode):
     ).hexdigest()
 
 
+# Clear mapping review values from session state
+
 def clear_review_state():
     keys = list(REVIEW_WIDGET_KEYS)
 
@@ -195,12 +199,16 @@ def clear_review_state():
         st.session_state.pop(key, None)
 
 
+# Return the selected option index safely
+
 def option_index(options, selected):
     if selected in options:
         return options.index(selected)
 
     return 0
 
+
+# Display an optional column selector
 
 def optional_column(
     label,
@@ -227,7 +235,7 @@ def optional_column(
 
 
 def parse_year_period(value):
-    """استخراج السنة والنصف من قيمة مثل النصف الأول 2026 أو H2 2026."""
+    """Extract the year and half from values such as "النصف الأول 2026" or "H2 2026"."""
     if pd.isna(value):
         raise ValueError("قيمة السنة والفترة فارغة.")
 
@@ -301,6 +309,8 @@ def parse_year_period(value):
     return int(year_match.group()), period
 
 
+# Find required mapping fields that are still missing
+
 def required_mapping_gaps(mapping, factor_names):
     gaps = []
 
@@ -338,6 +348,8 @@ def required_mapping_gaps(mapping, factor_names):
 
     return gaps
 
+
+# Validate the selected column mapping before saving
 
 def validate_mapping(
     *,
@@ -416,7 +428,7 @@ def validate_mapping(
     return errors
 
 
-# رأس الصفحة
+# Page header
 
 st.markdown(
     """
@@ -435,7 +447,7 @@ st.markdown(
 )
 
 
-# رفع الملف
+# Upload file
 
 uploaded_file = st.file_uploader(
     "ملف Excel",
@@ -500,7 +512,7 @@ available_columns = (
 )
 
 
-# إعداد الملف والتحليل
+# File setup and analysis
 
 with st.container(border=True):
     st.markdown(
@@ -605,7 +617,7 @@ if not mapping:
     st.stop()
 
 
-# ملخص المطابقة
+# Mapping summary
 
 gaps = required_mapping_gaps(
     mapping,
@@ -703,7 +715,7 @@ with st.container(border=True):
     )
 
 
-# القيم المقترحة التي ستُستخدم في الحفظ
+# Suggested values used for saving
 
 service_column = mapping.get(
     "service_column"
@@ -781,7 +793,7 @@ bps_column = mapping.get(
 )
 
 
-# مراجعة وتعديل المطابقة
+# Review and edit the mapping
 
 with st.expander(
     "مراجعة وتعديل المطابقة",
@@ -955,7 +967,7 @@ with st.expander(
             st.write(f"• {warning}")
 
 
-# التعليقات والحفظ
+# Comments and saving
 
 with st.container(border=True):
     st.markdown(
@@ -984,7 +996,7 @@ with st.container(border=True):
     )
 
 
-# التحقق والحفظ
+# Validation and saving
 
 if save_clicked:
     errors = validate_mapping(

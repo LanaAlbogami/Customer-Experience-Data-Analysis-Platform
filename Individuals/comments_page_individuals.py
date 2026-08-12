@@ -20,22 +20,12 @@ from database_individuals.models import (
     IndividualProfile,
 )
 
-<<<<<<< Updated upstream
-# إعداد متغيرات البيئة
-
-def get_env_path():
-    """البحث عن ملف .env داخل مجلدات المشروع."""
-    current_file = Path(__file__).resolve()
-=======
 # ==================================================
-# تحميل ملف .env بشكل موثوق
+# Environment setup
 # ==================================================
 
 def get_env_path():
-    """
-    يبحث عن .env سواء كانت الصفحة داخل individuals/
-    أو تم نقلها لمجلد آخر.
-    """
+    """Find the .env file within the project directories."""
     current_file = Path(__file__).resolve()
 
     candidates = [
@@ -62,23 +52,28 @@ def get_env_path():
     )
 
 
+# Locate the environment file
 ENV_PATH = get_env_path()
 
+# Load values from the .env file
 load_dotenv(
     dotenv_path=ENV_PATH,
     override=True,
 )
 
+# Gemini API key
 GEMINI_API_KEY = os.getenv(
     "GEMINI_API_KEY",
     "",
 ).strip()
 
+# Gemini model name
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
     "gemini-3.6-flash",
 ).strip()
 
+# Number of comments per analysis batch
 COMMENTS_BATCH_SIZE = int(
     os.getenv(
         "COMMENTS_BATCH_SIZE",
@@ -86,71 +81,13 @@ COMMENTS_BATCH_SIZE = int(
     )
 )
 
-# يظهر في التيرمنال فقط، ولا يطبع قيمة المفتاح.
-print(f"[Gemini] ENV file: {ENV_PATH}")
-print(f"[Gemini] API key found: {bool(GEMINI_API_KEY)}")
-print(f"[Gemini] Model: {GEMINI_MODEL}")
->>>>>>> Stashed changes
-
-    candidates = [
-        Path.cwd() / ".env",
-        current_file.parent / ".env",
-        current_file.parent.parent / ".env",
-    ]
-
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-
-    found = find_dotenv(
-        filename=".env",
-        usecwd=True,
-    )
-
-    if found:
-        return Path(found)
-
-    raise RuntimeError(
-        "لم يتم العثور على ملف .env. "
-        "تأكدي أنه موجود في مجلد المشروع بجانب main.py."
-    )
-
-
-# تحديد مسار ملف البيئة
-ENV_PATH = get_env_path()
-
-# تحميل القيم من ملف .env
-load_dotenv(
-    dotenv_path=ENV_PATH,
-    override=True,
-)
-
-# مفتاح Gemini
-GEMINI_API_KEY = os.getenv(
-    "GEMINI_API_KEY",
-    "",
-).strip()
-
-# اسم موديل Gemini
-GEMINI_MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-3.6-flash",
-).strip()
-
-# عدد التعليقات في كل دفعة تحليل
-COMMENTS_BATCH_SIZE = int(
-    os.getenv(
-        "COMMENTS_BATCH_SIZE",
-        "300",
-    )
-)
-
-# يظهر في التيرمنال فقط، ولا يطبع قيمة المفتاح.
+# Printed in the terminal only; the API key value is never displayed.
 print(f"[Gemini] ENV file: {ENV_PATH}")
 print(f"[Gemini] API key found: {bool(GEMINI_API_KEY)}")
 print(f"[Gemini] Model: {GEMINI_MODEL}")
 
-# تنسيق الصفحة
+
+# Page styling
 st.markdown(
     """
     <style>
@@ -318,7 +255,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# تعليقات لا يتم احتسابها في التحليل
+# Comments excluded from the analysis
 IGNORED_COMMENTS = {
     "",
     "لا يوجد تعليق",
@@ -333,7 +270,7 @@ IGNORED_COMMENTS = {
 }
 
 
-# تنظيف التعليق واستبعاد القيم الفارغة
+# Clean comments and exclude empty values
 
 def clean_comment(value):
     if value is None:
@@ -351,7 +288,7 @@ def clean_comment(value):
     return comment
 
 
-# قراءة التعليقات وبيانات الأفراد من قاعدة البيانات
+# Read comments and individual data from the database
 @st.cache_data(ttl=60)
 def fetch_comments_from_db():
     with SessionLocal() as session:
@@ -402,16 +339,12 @@ def fetch_comments_from_db():
     return comments
 
 
-# شكل بيانات السبب
+# Reason data model
 class Reason(BaseModel):
     name: str
     count: int
 
 
-<<<<<<< Updated upstream
-# نتيجة تحليل دفعة واحدة
-=======
->>>>>>> Stashed changes
 class BatchAnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -420,10 +353,6 @@ class BatchAnalysisResult(BaseModel):
     dissatisfaction_reasons: list[Reason]
 
 
-<<<<<<< Updated upstream
-# النتيجة النهائية للتحليل
-=======
->>>>>>> Stashed changes
 class AnalysisResult(BaseModel):
     satisfaction_count: int
     dissatisfaction_count: int
@@ -443,10 +372,6 @@ AnalysisResult.model_rebuild(
 )
 
 
-<<<<<<< Updated upstream
-# تعليمات Gemini لتحليل كل دفعة
-=======
->>>>>>> Stashed changes
 BATCH_PROMPT = """
 أنت متخصص في تحليل تعليقات تجربة العملاء للأفراد باللغة العربية.
 
@@ -476,10 +401,6 @@ BATCH_PROMPT = """
 """
 
 
-<<<<<<< Updated upstream
-# تعليمات Gemini لتجميع النتائج النهائية
-=======
->>>>>>> Stashed changes
 FINAL_PROMPT = """
 أنت متخصص في تلخيص نتائج تحليل تجربة العملاء للأفراد.
 
@@ -510,11 +431,8 @@ FINAL_PROMPT = """
 """
 
 
-<<<<<<< Updated upstream
-# إنشاء اتصال Gemini
+# Create the Gemini client
 
-=======
->>>>>>> Stashed changes
 def _gemini_client():
     if not GEMINI_API_KEY:
         raise ValueError(
@@ -527,11 +445,8 @@ def _gemini_client():
     )
 
 
-<<<<<<< Updated upstream
-# إرسال الطلب مع إعادة المحاولة عند الأخطاء المؤقتة
+# Send a structured request with retry handling
 
-=======
->>>>>>> Stashed changes
 def _structured_request(
     client,
     prompt,
@@ -589,11 +504,8 @@ def _structured_request(
     raise last_error
 
 
-<<<<<<< Updated upstream
-# تحليل دفعة واحدة من التعليقات
+# Analyze one batch of comments
 
-=======
->>>>>>> Stashed changes
 def _analyze_batch(
     client,
     comments,
@@ -639,11 +551,8 @@ def _analyze_batch(
     )
 
 
-<<<<<<< Updated upstream
-# دمج نتائج الدفعات وإنتاج الخلاصة والتوصية
+# Merge batch results and generate the final output
 
-=======
->>>>>>> Stashed changes
 def _finalize_analysis(
     client,
     satisfaction_count,
@@ -683,7 +592,7 @@ neutral_count = {neutral_count}
         AnalysisResult,
     )
 
-    # الأعداد النهائية نحسبها برمجيًا من كل الدفعات.
+    # Final counts are calculated programmatically from all batches.
     result.satisfaction_count = satisfaction_count
     result.dissatisfaction_count = dissatisfaction_count
     result.neutral_count = neutral_count
@@ -691,11 +600,8 @@ neutral_count = {neutral_count}
     return result
 
 
-<<<<<<< Updated upstream
-# تقسيم التعليقات إلى دفعات وتحليلها
+# Split comments into batches and analyze them
 
-=======
->>>>>>> Stashed changes
 def analyze_comments(data):
     if not data:
         raise ValueError(
@@ -792,11 +698,8 @@ def analyze_comments(data):
 
     return result
 
-<<<<<<< Updated upstream
-# عرض أعلى خمسة أسباب داخل بطاقة
+# Display the top five reasons
 
-=======
->>>>>>> Stashed changes
 def show_reasons(title, reasons, badge_class):
     top_reasons = sorted(
         reasons,
@@ -834,7 +737,7 @@ def show_reasons(title, reasons, badge_class):
     )
 
 
-# عنوان الصفحة
+# Page title
 st.markdown(
     '<div class="comments-title">تحليل تعليقات الأفراد</div>',
     unsafe_allow_html=True,
@@ -850,7 +753,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# تحميل التعليقات من قاعدة البيانات
+# Load comments from the database
 try:
     comments_data = fetch_comments_from_db()
 except Exception as error:
@@ -866,7 +769,7 @@ if not comments_data:
     st.stop()
 
 
-# تجهيز خيارات الفلاتر
+# Prepare filter options
 all_genders = sorted(
     {item["gender"] for item in comments_data}
 )
@@ -899,7 +802,7 @@ all_periods = [
 ]
 
 
-# عرض الفلاتر في صف واحد
+# Display filters in one row
 filter1, filter2, filter3, filter4, filter5 = st.columns(5)
 
 with filter1:
@@ -933,7 +836,7 @@ with filter5:
     )
 
 
-# تطبيق الفلاتر على التعليقات
+# Apply filters to comments
 filtered_data = [
     item
     for item in comments_data
@@ -962,7 +865,7 @@ filtered_data = [
 ]
 
 
-# عرض عدد التعليقات ومعاينتها
+# Display comment count and preview
 info_col1, info_col2 = st.columns([1, 2])
 
 with info_col1:
@@ -999,7 +902,7 @@ if not filtered_data:
 
 
 
-# توسيط زر بدء التحليل
+# Center the analysis button
 _, center, _ = st.columns([1, 1.5, 1])
 
 with center:
@@ -1009,7 +912,7 @@ with center:
     )
 
 
-# تنفيذ التحليل عند الضغط على الزر
+# Run the analysis when the button is clicked
 if analyze_button:
     with st.spinner(
         "جاري تحليل التعليقات..."
@@ -1023,7 +926,7 @@ if analyze_button:
                 "تم تحليل جميع التعليقات بنجاح."
             )
 
-            # عرض أعداد التعليقات حسب التصنيف
+            # Display comment counts by classification
             count_col1, count_col2, count_col3, count_col4 = st.columns(4)
 
             with count_col1:
@@ -1058,7 +961,7 @@ if analyze_button:
                 "الأرقام تمثل عدد التعليقات، وليست بالضرورة عدد أفراد مختلفين."
             )
 
-            # عرض أسباب الرضا وعدم الرضا
+            # Display satisfaction and dissatisfaction reasons
             col_right, col_left = st.columns(
                 2,
                 gap="large",
@@ -1078,7 +981,7 @@ if analyze_button:
                     "negative-count",
                 )
 
-            # تجهيز التوصية للعرض داخل HTML
+            # Prepare the recommendation for HTML display
             safe_recommendation = html.escape(
                 result.smart_recommendation
             ).replace(
@@ -1100,7 +1003,7 @@ if analyze_button:
                 unsafe_allow_html=True,
             )
 
-            # تجهيز الخلاصة للعرض داخل HTML
+            # Prepare the summary for HTML display
             safe_summary = html.escape(
                 result.summary
             ).replace(
