@@ -1,35 +1,11 @@
-"""
-calculations.py
----------------
-The calculation engine for the Customer Experience Platform.
-
-Owner: Member 1.
-Members 3 (Dashboard) and 4 (Reports) should IMPORT from this file
-instead of rewriting the same math:
-
-    from calculations import calculate_csat, calculate_change, calculate_gap
-
-The CSAT / CES / NPS formulas each use a fixed answer scale, described
-in the docstring of every function. Agree on those scales with the team
-before the survey questions are written.
-
-There is no Streamlit and no database code here on purpose.
-"""
-
 import pandas as pd
 
-
+# this function is used to clean the input data, removing any NaN values
 def _clean(responses):
-    """
-    Accept either a plain Python list or a pandas Series, and return a
-    Series with the blank answers removed.
-    """
     return pd.Series(list(responses)).dropna()
 
 
-# ----------------------------------------------------------------------
-# 1) Survey-based indicators: CSAT, CES, NPS
-# ----------------------------------------------------------------------
+# Survey-based indicators: CSAT, CES, NPS
 
 def calculate_csat(responses):
     """
@@ -82,9 +58,7 @@ def calculate_nps(responses):
     return round(promoters - detractors, 2)
 
 
-# ----------------------------------------------------------------------
-# 2) Comparison indicators: change over time, gap vs. target
-# ----------------------------------------------------------------------
+# Comparison indicators: change over time, gap vs. target
 
 def calculate_change(previous_value, current_value):
     """
@@ -183,9 +157,7 @@ def summarize_indicator(previous_value, current_value, target_value,
     return result
 
 
-# ----------------------------------------------------------------------
 # Quick self-test: run "python calculations.py" to check the math.
-# ----------------------------------------------------------------------
 if __name__ == "__main__":
     print("CSAT:", calculate_csat([5, 4, 3, 5, 2, 4]))   # 66.67 %
     print("CES :", calculate_ces([5, 4, 3, 1, 2]))       # 40.0 - 40.0 = 0.0

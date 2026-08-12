@@ -1,19 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-data_entry.py
--------------
-FRONTEND for the data entry page: Streamlit widgets and layout only.
-
-RULE: no business rules in this file. It asks entry_backend.py what the
-options are, shows them, and hands the typed values back.
-
-Run it with:
-    streamlit run data_entry.py
-
-Built step by step. Done so far:
-    STEP 1 - page setup + the basic data fields
-    STEP 2 - the indicators card + Save / Cancel
-"""
+# Frontend for the data entry page.
 
 import streamlit as st
 
@@ -21,9 +7,7 @@ from style import apply_theme
 import entry_backend as backend
 
 
-# ----------------------------------------------------------------------
 # Page setup
-# ----------------------------------------------------------------------
 apply_theme()
 
 # Streamlit has no built-in right-to-left setting, so we add it as CSS.
@@ -55,9 +39,8 @@ st.markdown(
 )
 
 
-# ----------------------------------------------------------------------
 # Small helpers for clearing the boxes
-# ----------------------------------------------------------------------
+
 # Every box key ends with a version number. Raising the version makes
 # Streamlit build brand-new (empty) boxes, which is how we clear the form.
 if "form_version" not in st.session_state:
@@ -67,22 +50,19 @@ if "form_version" not in st.session_state:
 if "flash_message" not in st.session_state:
     st.session_state.flash_message = None
 
-
+# Empty every number box, optionally leaving a message on screen
 def clear_boxes(message=None):
-    """Empty every number box, optionally leaving a message on screen."""
     st.session_state.form_version += 1
     st.session_state.flash_message = message
     st.rerun()
 
-
+# Build the unique key of one box, e.g. "current_CSAT_3
 def box_key(prefix, code):
-    """Build the unique key of one box, e.g. "current_CSAT_3"."""
     return f"{prefix}_{code}_{st.session_state.form_version}"
 
 
-# ----------------------------------------------------------------------
 # Basic data: which service, and which period
-# ----------------------------------------------------------------------
+
 st.title("إدخال بيانات المؤشرات")
 
 # In right-to-left, the FIRST column appears on the right of the screen.
@@ -107,9 +87,9 @@ with left_column:
                           format_func=backend.period_label)
 
 
-# ----------------------------------------------------------------------
+
 # The indicators card
-# ----------------------------------------------------------------------
+
 # Column widths: the name column is wider than the three value columns.
 COLUMN_WIDTHS = [1.2, 1, 1, 1]
 
@@ -126,7 +106,7 @@ with st.container(border=True):
 
     st.markdown('<hr class="thin-line">', unsafe_allow_html=True)
 
-    # The "previous" values are read from the period before -- they are
+    # The "previous" values are read from the period before, they are
     # shown to the user, not typed. Fetched once for the chosen service.
     previous_values = backend.get_previous_values(department, service,
                                                   year, period)
@@ -161,14 +141,14 @@ with st.container(border=True):
         with target_column:
             # Starts at the default target but the user can change it.
             # After a save/cancel the version bump rebuilds the box, so it
-            # resets back to this default -- which is what we want.
+            # resets back to this default.
             target = st.number_input(
                 "المستهدف", key=box_key("target", code),
                 min_value=lowest, max_value=highest,
                 value=backend.default_target(code), step=1.0,
                 label_visibility="collapsed")
 
-        # "previous" is no longer typed; the backend fills it when saving.
+        # "previous" is not typed; the backend fills it when saving.
         typed_values[code] = {"current": current, "target": target}
 
     st.write("")
@@ -181,9 +161,7 @@ with st.container(border=True):
         cancel_clicked = st.button("إلغاء", width="stretch")
 
 
-# ----------------------------------------------------------------------
 # What the buttons do
-# ----------------------------------------------------------------------
 if save_clicked:
     # All the rules live in the backend; this file only shows the answer.
     result = backend.save_entry(department, service, year, period,
