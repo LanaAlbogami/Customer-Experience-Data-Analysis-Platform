@@ -1,17 +1,16 @@
 """
-seed_individuals.py
---------------------
-يعبّي الجداول الثابتة بقاعدة بيانات الأفراد:
-  - SharedCSATFactors: الـ 8 عوامل الثابتة
-  - SharedIndicators: مؤشر NPS
+Seeds the individuals database with the required reference data.
 
-يُشغَّل مرة وحدة بس (بعد إنشاء الجداول بـ create_tables_individuals.py).
-تشغيله أكثر من مرة آمن: يتحقق قبل كل إضافة عشان ما يكرر نفس الصف.
+Populates:
+- SharedCSATFactors with the eight predefined CSAT factors.
+- SharedIndicators with the NPS indicator.
+
+This script is intended to run after the database tables are created.
+It is safe to run multiple times because each record is checked before insertion.
 """
 
 from database_individuals.connection import SessionLocal
 from database_individuals.models import SharedCSATFactor, SharedIndicator
-
 
 FACTORS = [
     (1, "ما مدى رضاك عن إجراءات التسجيل في التطبيق؟"),
@@ -24,17 +23,18 @@ FACTORS = [
     (8, "ما مدى رضاك عن تعدد قنوات الاتصال للحصول على الدعم؟"),
 ]
 
-# NPS يُسأل بمقياس 0-10 (وليس 1-5 مثل الـ Factors)
+# NPS uses a 0-10 scale, unlike CSAT factors which use a 1-5 scale.
 INDICATORS = [
     ("NPS", "score", 0, 10),
 ]
 
 
 def seed() -> None:
+    """Inserts missing CSAT factors and indicators without creating duplicates."""
     session = SessionLocal()
 
     try:
-        # --- العوامل الثابتة ---
+        # Inserts only CSAT factors that are not already stored in the database.
         added_factors = 0
         for display_order, factor_name in FACTORS:
             exists = (
@@ -51,7 +51,7 @@ def seed() -> None:
                 )
                 added_factors += 1
 
-        # --- المؤشرات الأخرى (NPS) ---
+        # Inserts only indicators that are not already stored in the database.
         added_indicators = 0
         for name, unit, minimum, maximum in INDICATORS:
             exists = (
@@ -78,10 +78,12 @@ def seed() -> None:
         )
 
     except Exception as error:
+        # Rolls back pending changes if any database operation fails.
         session.rollback()
         print(f"خطأ أثناء زرع البيانات: {error}")
 
     finally:
+        # Always closes the database session after the seeding process finishes.
         session.close()
 
 
