@@ -5,9 +5,6 @@ app_mode.py
 The one small module that remembers which mode the app is in:
     "individuals" (أفراد)  or  "departments" (جهات)
 
-It has NO Streamlit UI, so any page can safely import it without
-re-running the landing screen.
-
 The two modes use DIFFERENT databases, so this module is also the single
 place that says which database name belongs to each mode. When a page (or
 the connection layer) needs the right database, it asks here.
@@ -16,11 +13,9 @@ the connection layer) needs the right database, it asks here.
 import streamlit as st
 
 
-# The database name for each mode. These must match the databases created
-# in MySQL. Kept here so there is one obvious place to change them.
 MODE_DATABASES = {
-    "departments": "customer_experience_db",       # already built
-    "individuals": "customer_experience_individuals_db",  # to be created
+    "departments": "customer_experience_db",
+    "individuals": "customer_experience_individuals_db",
 }
 
 MODE_LABELS = {

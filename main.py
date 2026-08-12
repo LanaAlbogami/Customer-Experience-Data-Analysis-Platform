@@ -1,20 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-main.py
-r
 
-Application entry point. Launch the platform with:  streamlit run main.py
+# Application entry point.
 
-Behaviour:
-    - When no mode has been selected, the landing page is displayed. It
-      presents the SDAIA logo and two clickable cards (جهات حكومية / أفراد).
-    - Once a mode is selected, control is handed to pages.py, which renders
-      the sidebar and the remaining application pages.
-
-st.set_page_config is called on the landing path only. After a mode has
-been selected, pages.py is responsible for the page configuration and
-styling.
-"""
 
 import base64
 from pathlib import Path
@@ -27,20 +14,22 @@ import app_mode
 from style import COLORS   # Reuse the shared palette so the app stays consistent.
 
 
-# صفحات الأفراد موجودة داخل مجلد Individuals/، وبعض ملفاتها تستورد
-# ملفاتها المجاورة باسم مباشر (مثل data_service_individuals). إضافة المجلد
-# إلى مسار البحث تخلي هذي الاستيرادات تشتغل مهما كان مجلد التشغيل.
+# The individuals pages live inside the Individuals/ folder, and some of their
+# files import their neighbours by plain name (e.g. data_service_individuals).
+# Adding this folder to the search path makes those imports work no matter
+# which directory the app is launched from.
 _INDIVIDUALS_DIR = str(Path(__file__).parent / "Individuals")
 if _INDIVIDUALS_DIR not in sys.path:
     sys.path.insert(0, _INDIVIDUALS_DIR)
 
+# Same as above, but for the Departments/ folder.
 _DEPARTMENTS_DIR = str(Path(__file__).parent / "Departments")
 if _DEPARTMENTS_DIR not in sys.path:
     sys.path.insert(0, _DEPARTMENTS_DIR)
 
 # Landing-page colours.
-BG = COLORS["navy"]                # Page background — from style.py.
-CARD_HOVER = COLORS["navy_light"]  # Card colour on hover — from style.py.
+BG = COLORS["navy"]                  # Page background — from style.py.
+CARD_HOVER = COLORS["navy_light"]    # Card colour on hover — from style.py.
 CARD_BG = "#1F2C4C"                # Card fill: between navy and navy_light.
 ICON_COLOR = "#3A4A72"             # Icon colour inside each card (dark-mode indigo).
 LABEL_COLOR = "#E7EAF3"            # Card label colour (light, for the dark background).
@@ -75,13 +64,12 @@ def show_landing():
 
     logo = _logo_data_uri()
     # Logo size uses clamp(minimum, viewport-relative, maximum).
-    # Increase the last value (120px) to enlarge the logo, decrease to shrink.
     logo_html = (f'<img src="{logo}" style="height:clamp(72px,13vh,120px);">'
                  if logo else "")
 
     # The two card icons are drawn as inline SVG so their size and colour can
     # be controlled directly.
-    # Building icon (for government departments). The icon size is set in the
+    # Building icon (for departments). The icon size is set in the
     # width/height style below — clamp(minimum, viewport-relative, maximum=92px).
     # The same value is repeated on the person icon so both match in size.
     building_svg = (
@@ -99,20 +87,9 @@ def show_landing():
         '<path d="M3.5 20c0-4.2 3.8-6.5 8.5-6.5s8.5 2.3 8.5 6.5v.5h-17V20z"/></svg>'
     )
 
-    # Each card is a full <a> link, with the icon placed above the label
-    # using custom HTML. This avoids relying on Streamlit's internal button
-    # structure, which proved difficult to style reliably.
-    #
-    # Adjustable values in the CSS below:
-    #   .landing-wrap padding-top:6vh  -> raises/lowers all content (larger = lower)
-    #   .landing-wrap gap:2vh          -> space between the logo/title and the cards
-    #   .landing-title font-size clamp -> page title size (last value = 34px)
-    #   .cards-row gap:36px            -> space between the two cards
-    #   .mode-card width/height 42vh   -> card size (larger = bigger; the card is square)
-    #   .mode-card gap:3vh             -> space between the icon and the label
-    #   .mode-card .label font-size    -> card label size (أفراد / جهات حكومية)
-    #   Colours: BG and CARD_HOVER come from style.py; the darker shades
-    #            (CARD_BG, ICON_COLOR, LABEL_COLOR) are defined at the top of the file.
+    # Inject the landing page's CSS. This styles the dark full-screen layout
+    # and the two clickable mode cards. Uses an f-string so the palette
+    # colours (BG, CARD_BG, CARD_HOVER, LABEL_COLOR) are dropped in directly.
     st.markdown(
         f"""
 <style>
@@ -135,6 +112,10 @@ def show_landing():
         unsafe_allow_html=True,
     )
 
+    # Build the landing markup and render it.
+    # Structure: wrapper > (logo + title) + (row of two cards).
+    # Each card is an <a> link that reloads the page with ?mode=... set,
+    # which the code at the top of show_landing() reads to pick the mode.
     st.markdown(
         f'<div class="landing-wrap">'
         f'<div class="landing-head">{logo_html}'
