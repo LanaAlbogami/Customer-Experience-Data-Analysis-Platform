@@ -459,7 +459,7 @@ def _individuals_pages():
         st.Page(
             "Individuals/reports_individuals_page.py",
             title="التقارير",
-            icon=":material/analytics:",
+            icon=":material/description:",
         ),
     ]
 
