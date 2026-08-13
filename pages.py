@@ -5,18 +5,18 @@ from PIL import Image
 import app_mode
 
 
-# ==================================================
-# تجهيز الشعار وقص الفراغ الشفاف
-# ==================================================
+# Prepare the logo and crop away the transparent padding
 
 def prepare_logo():
     original_logo = Path("LogoWhite.png")
     cropped_logo = Path("LogoWhite_cropped.png")
 
+    # No source logo? Just return its path and let the caller handle it.
     if not original_logo.exists():
         return original_logo
 
     try:
+        # Re-crop only if the cropped file is missing or the original is newer.
         should_crop = (
             not cropped_logo.exists()
             or original_logo.stat().st_mtime
@@ -53,11 +53,10 @@ def prepare_logo():
 LOGO_PATH = prepare_logo()
 
 
-# ==================================================
-# إعداد الصفحة والشعار والتصميم
-# ==================================================
+# Page setup: config, logo, and styling
 
 def setup():
+    # Basic page configuration (title, favicon, wide layout, open sidebar).
     st.set_page_config(
         page_title="منصة تجربة العميل",
         page_icon=str(LOGO_PATH),
@@ -65,12 +64,16 @@ def setup():
         initial_sidebar_state="expanded",
     )
 
+    # Show the logo in the sidebar if the file exists.
     if LOGO_PATH.exists():
         st.logo(
             str(LOGO_PATH),
             size="large",
         )
 
+    # Inject the app's global CSS: loads the Tajawal font, sets a
+    # right-to-left layout, styles the dark sidebar and its navigation,
+    # the login dialog, and the mode-switch toggle pinned to the bottom.
     st.markdown(
         """
         <style>
@@ -212,7 +215,7 @@ def setup():
             direction: ltr !important;
             text-align: center !important;
 
-            flex-shrink: 0 !important;
+            shrink: 0 !important;
         }
 
         [data-testid="stSidebarNav"] a[aria-current="page"] {
@@ -275,50 +278,29 @@ def setup():
             border-color: rgba(49, 51, 63, 0.4) !important;
         }
 
-        /* ============================================
-           زر التبديل بين الجهات والأفراد (أسفل السايدبار)
-           بدون position:absolute — نستخدم Flexbox عشان
-           الزر يبقى جوا حدود السايدبار دايمًا، بدل ما "يطير"
-           برّا حدوده ويرتبط بحواف الصفحة كلها.
-           ============================================ */
-
-        [data-testid="stSidebarContent"] {
-            display: flex !important;
-            flex-direction: column !important;
-            min-height: 100vh !important;
+        section[data-testid="stSidebar"] > div {
+            position: relative !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+            padding-bottom: 92px !important;
         }
 
-        .st-key-mode_switch_box {
-            margin-top: auto !important;
-            padding: 16px 4px 4px 4px !important;
+        section[data-testid="stSidebar"] .st-key-mode_switch_box {
+            position: absolute !important;
+            bottom: 0 !important;
+            right: 0 !important;
+            left: 0 !important;
+            z-index: 5 !important;
+
+            padding: 16px 18px !important;
             border-top: 1px solid rgba(255, 255, 255, 0.10) !important;
             background-color: #16213E !important;
-            width: 100% !important;
         }
 
-        /* تحييد أي صندوق حدود داخلي مختفي جوا الحاوية (ناتج من CSS
-           صفحات معينة تلوّن كل الصناديق أبيض) — يضمن الخلفية الغامقة
-           تبقى ظاهرة بدل أي "بقعة بيضاء" حول الزر. */
-        html body section[data-testid="stSidebar"] .st-key-mode_switch_box,
-        html body section[data-testid="stSidebar"] .st-key-mode_switch_box *,
-        html body section[data-testid="stSidebar"] .st-key-mode_switch_box div[data-testid="stVerticalBlockBorderWrapper"] {
-            background-color: transparent !important;
-            background: transparent !important;
-        }
-
-        html body section[data-testid="stSidebar"] .st-key-mode_switch_box {
-            background-color: #16213E !important;
-        }
-
-        .st-key-mode_switch_box div[data-testid="stVerticalBlockBorderWrapper"] {
-            border: none !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            padding: 0 !important;
-        }
-
-        .st-key-mode_switch_box [data-testid="stToggle"],
-        .st-key-mode_switch_box label[data-baseweb="checkbox"] {
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        [data-testid="stToggle"],
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        label[data-baseweb="checkbox"] {
             display: flex !important;
             flex-direction: row-reverse !important;
             align-items: center !important;
@@ -329,15 +311,31 @@ def setup():
             direction: rtl !important;
         }
 
-        .st-key-mode_switch_box [data-testid="stWidgetLabel"] p,
-        .st-key-mode_switch_box label p,
-        .st-key-mode_switch_box label span {
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        [data-testid="stWidgetLabel"] p {
             color: #FFFFFF !important;
             font-family: "Tajawal", sans-serif !important;
             font-size: 16px !important;
             font-weight: 700 !important;
             margin: 0 !important;
-            opacity: 1 !important;
+        }
+
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        [data-baseweb="checkbox"] * {
+            transition: none !important;
+        }
+        /* التوقل نفسه (track + thumb) — نرجّعه LTR عشان الكرة ما تطير */
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        label[data-baseweb="checkbox"] > div:last-child,
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        label[data-baseweb="checkbox"] > div:last-child * {
+            direction: ltr !important;
+        }
+        /* إجبار الكرة تلتصق يسار البيل وتتحرك يمين عند التفعيل */
+        section[data-testid="stSidebar"] .st-key-mode_switch_box
+        .st-emotion-cache-1hoeffx {
+            direction: ltr !important;
+            right: auto !important;
         }
         </style>
         """,
@@ -345,14 +343,14 @@ def setup():
     )
 
 
-# ==================================================
-# زر التبديل بين الجهات والأفراد
-# ==================================================
+# Toggle for switching between government and individuals modes
 
 def _sidebar_mode_toggle():
+    # Read the current mode; label the toggle with the *current* mode's name.
     current_is_individuals = app_mode.is_individuals()
     label = "أفراد" if current_is_individuals else "جهات حكومية"
 
+    # Render the toggle inside a keyed container (styled by the CSS above).
     with st.sidebar:
         with st.container(key="mode_switch_box"):
             is_individuals = st.toggle(
@@ -367,15 +365,14 @@ def _sidebar_mode_toggle():
         else "departments"
     )
 
+    # If the toggle changed the mode, save it and rerun to reload the pages.
     if new_mode != app_mode.get_mode():
         app_mode.set_mode(new_mode)
         st.rerun()
 
 
-# ==================================================
-# نافذة كلمة المرور لحماية صفحة التعديل
-# ==================================================
-CORRECT_PASSWORD = "123"  # كلمة السر
+# Password dialog that protects the management (edit) page
+CORRECT_PASSWORD = "123"
 
 @st.dialog("تسجيل الدخول لصفحة التعديل")
 def password_dialog():
@@ -400,43 +397,42 @@ def password_dialog():
             
     if col2.button("إلغاء", key="cancel_pwd", use_container_width=True):
         st.session_state["authenticated_management"] = False
-        st.switch_page("Dashboard.py")
+        st.switch_page("Departments/Dashboard.py")
 
 
-# ==================================================
-# تعريف صفحات التطبيق
-# ==================================================
+# Application page definitions
 
 def _departments_pages():
+    # The pages shown in "government departments" mode, in sidebar order.
     return [
         st.Page(
-            "Dashboard.py",
+            "Departments/Dashboard.py",
             title="لوحة المعلومات",
             icon=":material/dashboard:",
-            default=True,
+            default=True, # landing page for this mode
         ),
         st.Page(
-            "data_entry.py",
+            "Departments/data_entry.py",
             title="إدخال بيانات المؤشرات",
             icon=":material/add:",
         ),
         st.Page(
-            "data_upload.py",
+            "Departments/data_upload.py",
             title="رفع ملف Excel",
             icon=":material/upload_file:",
         ),
         st.Page(
-            "comments_page.py",
+            "Departments/comments_page.py",
             title="تحليل تعليقات العملاء",
             icon=":material/chat_bubble_outline:",
         ),
         st.Page(
-            "reports_page.py",
+            "Departments/reports_page.py",
             title="التقارير",
             icon=":material/description:",
         ),
         st.Page(
-            "management_page.py",
+            "Departments/management_page.py",
             title="التعديل",
             icon=":material/edit:",
         ),
@@ -444,12 +440,13 @@ def _departments_pages():
 
 
 def _individuals_pages():
+    # The pages shown in "individuals" mode, in sidebar order.
     return [
         st.Page(
             "Individuals/Dashboard_individuals.py",
             title="لوحة المعلومات",
             icon=":material/dashboard:",
-            default=True,
+            default=True, # landing page for this mode
         ),
         st.Page(
             "Individuals/data_upload_individuals.py",
@@ -461,40 +458,52 @@ def _individuals_pages():
             title="تحليل تعليقات العملاء",
             icon=":material/chat_bubble_outline:",
         ),
+        st.Page(
+            "Individuals/reports_individuals_page.py",
+            title="التقارير",
+            icon=":material/description:",
+        ),
     ]
 
 
 def _pages_for(mode):
+    # Pick the page list based on the active mode (defaults to departments)
     if mode == "individuals":
         return _individuals_pages()
     return _departments_pages()
 
 
-# ==================================================
-# تشغيل التطبيق
-# ==================================================
+# Run the application
 
 def run_app():
+
+    # Apply page config and styling.
     setup()
 
+    # Draw the mode-switch toggle in the sidebar.
     _sidebar_mode_toggle()
 
+    # Determine the active mode (default to departments).
     mode = app_mode.get_mode() or "departments"
 
+    # Build the sidebar navigation from the mode's pages.
     page = st.navigation(
         _pages_for(mode),
         position="sidebar",
         expanded=True,
     )
 
+    # Leaving the edit page clears authentication, so it's required again next time.
     if page.title != "التعديل":
         st.session_state["authenticated_management"] = False
 
+    # Entering the edit page requires the password dialog first.
     if page.title == "التعديل":
         if not st.session_state.get("authenticated_management", False):
             password_dialog()
             st.stop()
 
+    # Render the selected page.
     page.run()
 
 
