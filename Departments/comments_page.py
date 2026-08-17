@@ -595,7 +595,7 @@ def _analyze_batch(
 ):
     records = "\n".join(
         (
-            f"{index}. القسم: {item['section']} | "
+            f"{index}. القطاع: {item['section']} | "
             f"الخدمة: {item['service']} | "
             f"السنة: {item['year']} | "
             f"الفترة: {item['period']} | "
@@ -895,7 +895,7 @@ def show_reasons(
     else:
         rows = (
             '<p class="feedback-text">'
-            'لا توجد أسباب في هذا القسم.'
+            'لا توجد أسباب في هذا القطاع.'
             '</p>'
         )
 
@@ -981,9 +981,9 @@ filter1, filter2, filter3, filter4 = st.columns(4)
 
 with filter1:
     selected_section = st.selectbox(
-        "القسم",
+        "القطاع",
         options=[
-            "كل الأقسام",
+            "كل القطاعات",
             *all_sections,
         ],
     )
@@ -1036,7 +1036,7 @@ filtered_data = [
     for item in comments_data
     if (
         (
-            selected_section == "كل الأقسام"
+            selected_section == "كل القطاعات"
             or item["section"] == selected_section
         )
         and (
@@ -1079,7 +1079,7 @@ with info_col2:
             use_container_width=True,
             hide_index=True,
             column_config={
-                "section": "القسم",
+                "section": "القطاع",
                 "service": "الخدمة",
                 "year": "السنة",
                 "period": "الفترة",
