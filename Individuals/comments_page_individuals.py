@@ -722,7 +722,7 @@ def show_reasons(title, reasons, badge_class):
     else:
         rows = (
             '<p class="feedback-text">'
-            'لا توجد أسباب في هذا القسم.'
+            'لا توجد أسباب في هذا القطاع.'
             '</p>'
         )
 
