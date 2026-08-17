@@ -800,7 +800,7 @@ with st.expander(
     expanded=bool(gaps),
 ):
     st.caption(
-        "راجعي الاختيارات التالية. عدّلي فقط الحقل غير الصحيح."
+        "راجع الاختيارات التالية. عدّل فقط الحقل غير الصحيح."
     )
 
     service_column = optional_column(
@@ -977,7 +977,7 @@ with st.container(border=True):
 
     st.markdown(
         '<div class="section-description">'
-        'اختاري أعمدة التعليقات التي تريدين الاحتفاظ بها فقط.'
+        'اختار أعمدة التعليقات التي تريد الاحتفاظ بها فقط.'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -986,7 +986,7 @@ with st.container(border=True):
         "أعمدة التعليقات",
         options=available_columns,
         default=[],
-        placeholder="اختاري الأعمدة النصية المطلوبة",
+        placeholder="اختار الأعمدة النصية المطلوبة",
     )
 
     save_clicked = st.button(

@@ -52,7 +52,7 @@ def _logo_data_uri():
 
 # Landing page (أفراد / جهات)
 def show_landing():
-    st.set_page_config(page_title="منصة تحليل تجارب العملاء", layout="wide")
+    st.set_page_config(page_title="منصة تحليل تجربة العملاء", layout="wide")
 
     # When a card is clicked, the page reloads with ?mode=... in the URL.
     # Read that value, store the selection, clear the URL, and rerun.
@@ -119,7 +119,7 @@ def show_landing():
     st.markdown(
         f'<div class="landing-wrap">'
         f'<div class="landing-head">{logo_html}'
-        f'<div class="landing-title">منصة تحليل تجارب العملاء</div></div>'
+        f'<div class="landing-title">منصة تحليل تجربة العملاء</div></div>'
         f'<div class="cards-row">'
         f'<a class="mode-card" href="?mode=individuals" target="_self">'
         f'<div>{person_svg}</div><div class="label">أفراد</div></a>'

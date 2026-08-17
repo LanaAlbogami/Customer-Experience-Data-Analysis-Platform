@@ -992,7 +992,7 @@ with st.expander(
 ):
     st.caption(
         "جميع الاختيارات الحالية ظاهرة هنا. "
-        "راجعيها وعدّلي غير الصحيح فقط."
+        "راجع وعدّل غير الصحيح فقط."
     )
 
     individual_id_column = optional_column(
@@ -1001,8 +1001,8 @@ with st.expander(
         individual_id_column,
         key="individual_review_id",
         help=(
-            "اختاريه فقط عند تحديث أفراد موجودين مسبقًا. "
-            "اتركيه غير موجود عند رفع أفراد جدد."
+            "اختاره فقط عند تحديث أفراد موجودين مسبقًا. "
+            "اتركه غير موجود عند رفع أفراد جدد."
         ),
     )
 
@@ -1250,7 +1250,7 @@ with st.container(
 
     st.markdown(
         '<div class="section-description">'
-        'اختاري أعمدة التعليقات التي تريدين حفظها فقط.'
+        'اختار أعمدة التعليقات التي تريد حفظها فقط.'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -1260,7 +1260,7 @@ with st.container(
         options=columns,
         default=[],
         placeholder=(
-            "اختاري الأعمدة النصية المطلوبة"
+            "اختار الأعمدة النصية المطلوبة"
         ),
     )
 

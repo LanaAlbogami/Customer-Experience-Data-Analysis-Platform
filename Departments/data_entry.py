@@ -69,7 +69,7 @@ st.title("إدخال بيانات المؤشرات")
 right_column, left_column = st.columns(2)
 
 with right_column:
-    department = st.selectbox("الإدارة", backend.get_departments())
+    department = st.selectbox("القسم", backend.get_departments())
 
 with left_column:
     # The service list is filtered by the department chosen above.
