@@ -2,7 +2,9 @@ import math
 import os
 import sys
 
-# Add the project root and Individuals directory to the import path so shared modules work when this file runs directly.
+# Add the project root and Individuals directory to the import path so
+# "style" (located at project root) can be imported even when this file
+# is run directly instead of through app.py.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -10,6 +12,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from style import apply_theme, COLORS
 
+st.set_page_config(page_title="لوحة رضا الأفراد", layout="wide")
 apply_theme()
 
 ROLE_COLORS = {
@@ -20,14 +23,16 @@ ROLE_COLORS = {
 
 DEFAULT_TARGETS = {"csat": 85, "nps": 76, "ces": 69}
 
-# Defines the chronological period order used to determine the previous reporting period.
+# Chronological period order, used to determine the period immediately
+# preceding any selected period.
 PERIOD_ORDER = ["الربع الأول", "الربع الثاني", "الربع الثالث", "الربع الرابع"]
 
 
 def _previous_year_period(year, period):
     """
-    Returns the year and reporting period immediately preceding the provided period.
-    Handles year transitions when the current period is the first quarter.
+    Returns the year and period immediately preceding the given period.
+    If the period is the first quarter, the previous period is the last
+    quarter of the prior year.
     """
     if period not in PERIOD_ORDER:
         return None, None
@@ -37,7 +42,7 @@ def _previous_year_period(year, period):
     return year, PERIOD_ORDER[idx - 1]
 
 
-# Applies RTL layout and shared dashboard styling.
+# ---- Force RTL + shared styling (same style as the departments dashboard) ----
 st.markdown("""
 <style>
 .stApp, .stApp p, .stApp span, .stMarkdown, .stCaption,
@@ -101,11 +106,9 @@ div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"] {
     margin-bottom: 4px;
     transition: background 0.15s ease;
 }
-
 div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"]:hover {
     background: #EFE9FA;
 }
-
 div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"] label p {
     font-size: 13px;
     color: #16213E;
@@ -117,7 +120,7 @@ div[data-testid="stExpanderDetails"] div[data-testid="stCheckbox"] label p {
 st.title("لوحة مؤشرات تجربة العميل (أفراد)")
 
 try:
-    from Individuals.data_service_individuals import (
+    from individuals.data_service_individuals import (
         aggregate_records,
         fetch_factor_order,
         fetch_indicator_names,
@@ -142,7 +145,7 @@ indicator_names = fetch_indicator_names()
 
 
 def _number_or_none(value):
-    # Converts valid values to float while safely handling empty or invalid input.
+    # Converts a value to float while safely handling empty/invalid input.
     if value is None or value == "":
         return None
     try:
@@ -152,16 +155,18 @@ def _number_or_none(value):
 
 
 def _target_or_default(code, value):
-    # Returns the stored target value, or the configured default when no value is available.
+    # Returns the stored target value, or the default target if missing.
     number = _number_or_none(value)
     return DEFAULT_TARGETS.get(code, 0) if number is None else number
 
 
-# Builds the demographic multi-select filters used to narrow the individual dataset.
+# ==================================================
+# Multi-select demographic filters
+# ==================================================
+
 st.subheader("عرض حسب")
 
 def _distinct(field):
-    # Returns sorted unique non-empty values for a specific dataset field.
     return sorted({
         r[field] for r in dataset if r.get(field)
     })
@@ -177,7 +182,7 @@ all_devices = _distinct("device")
 
 
 def _styled_multiselect(label, options, key, default=None):
-    """Creates a custom expandable multi-select filter using checkboxes."""
+    """Custom multi-select filter using an expander and checkboxes."""
     if not options:
         st.markdown(f'<div class="filter-label">{label}</div>', unsafe_allow_html=True)
         st.caption("لا توجد بيانات")
@@ -187,7 +192,6 @@ def _styled_multiselect(label, options, key, default=None):
         default = options
 
     def _is_checked(option):
-        # Reads the current checkbox state while falling back to the default selection.
         state_k = f"{key}_opt_{option}"
         if state_k in st.session_state:
             return st.session_state[state_k]
@@ -206,23 +210,46 @@ def _styled_multiselect(label, options, key, default=None):
 
     st.markdown(f'<div class="filter-label">{label}</div>', unsafe_allow_html=True)
 
-    with st.expander(summary_text, expanded=False, key=f"expander_{key}"):
-        select_all = st.checkbox(
-            "تحديد الكل",
-            value=(len(current) == len(options)),
-            key=f"{key}_select_all",
-        )
+    select_all_key = f"{key}_select_all"
 
-        if select_all:
-            for option in options:
-                st.session_state[f"{key}_opt_{option}"] = True
+    def _on_select_all_change():
+        # Runs immediately on click, before the script reruns, so the
+        # result is always correct on the very first click.
+        new_value = st.session_state[select_all_key]
+        for option in options:
+            st.session_state[f"{key}_opt_{option}"] = new_value
+
+    def _on_option_change():
+        # If the user manually toggles a single option, sync "select all"
+        # to the actual state immediately, avoiding a stale checkbox
+        # that would otherwise flip the result incorrectly next click.
+        all_now = all(
+            st.session_state.get(f"{key}_opt_{opt}", opt in default)
+            for opt in options
+        )
+        st.session_state[select_all_key] = all_now
+
+    with st.expander(summary_text, expanded=False, key=f"expander_{key}"):
+        if select_all_key not in st.session_state:
+            st.session_state[select_all_key] = (len(current) == len(options))
+
+        st.checkbox(
+            "تحديد الكل",
+            key=select_all_key,
+            on_change=_on_select_all_change,
+        )
 
         new_selection = []
         for option in options:
+            opt_key = f"{key}_opt_{option}"
+
+            if opt_key not in st.session_state:
+                st.session_state[opt_key] = option in default
+
             checked = st.checkbox(
                 str(option),
-                value=option in default,
-                key=f"{key}_opt_{option}",
+                key=opt_key,
+                on_change=_on_option_change,
             )
             if checked:
                 new_selection.append(option)
@@ -268,7 +295,8 @@ with row2c4:
 
 
 def _match(value, selected, all_values):
-    """Checks whether a value matches the active filter selection."""
+    # Checks whether a value matches the current filter selection, or
+    # whether the filter itself is empty (meaning all values match).
     if not all_values:
         return True
     if not selected:
@@ -294,7 +322,8 @@ if not matching_records:
 
 agg = aggregate_records(matching_records, factor_order, indicator_names)
 
-# Retrieves records from the previous reporting period using the same demographic filters.
+# Compute the previous period's records (same demographic filters) for
+# the "previous" KPI donut.
 prev_years = set()
 prev_periods = set()
 for y in (selected_years or all_years):
@@ -320,16 +349,19 @@ prev_agg = aggregate_records(prev_matching_records, factor_order, indicator_name
 
 st.caption(f"عدد الردود المطابقة للاختيار الحالي: {agg['participants_total']:,}")
 
-# Displays the main KPI cards for CSAT and any additional supported indicators.
+# ==================================================
+# KPI donuts: CSAT plus any extra indicators (NPS, CES...)
+# ==================================================
+
 st.subheader("المؤشرات الرئيسية")
 
-# Adds NPS or CES dynamically when those indicators exist in the database.
+# Builds the KPI list dynamically: CSAT is always shown, and any other
+# indicator (NPS, CES...) is added automatically if present in the database.
 extra_indicators = [name for name in indicator_names if name.upper() in ("NPS", "CES")]
 kpi_cols = st.columns(1 + len(extra_indicators))
 
 
 def donut_svg(fill_percent, display_text, color, size=170, stroke=17, font_size=30, track_color="#DDE1EA"):
-    # Generates the SVG used to visualize a KPI value as a circular progress indicator.
     fill_percent = min(max(fill_percent, 0), 100)
     r = (size - stroke) / 2
     c = size / 2
@@ -350,7 +382,7 @@ def donut_svg(fill_percent, display_text, color, size=170, stroke=17, font_size=
 
 
 def _normalize(value, kind):
-    # Converts indicator values into a 0-100 range for donut chart rendering.
+    # Normalizes a KPI value into a 0-100 range for donut chart rendering.
     number = _number_or_none(value)
     if number is None:
         return 0.0
@@ -360,7 +392,7 @@ def _normalize(value, kind):
 
 
 def _display_value(value, kind):
-    # Formats indicator values for display inside KPI cards.
+    # Formats a KPI value for display, showing a dash if unavailable.
     number = _number_or_none(value)
     if number is None:
         return "—"
@@ -369,13 +401,10 @@ def _display_value(value, kind):
 
 
 def kpi_block(col, label, previous, current, target, kind):
-    """
-    Renders a KPI card containing previous, current, and target values.
-    The current value is emphasized using the larger center donut.
-    """
+    # Renders a KPI card with previous, current, and target donuts.
     with col:
         with st.container(border=True):
-            st.markdown(f'<div class="card-title" style="text-align:center;">{label}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card-title">{label}</div>', unsafe_allow_html=True)
             c_prev, c_current, c_target = st.columns([1, 1.3, 1])
 
             with c_prev:
@@ -424,7 +453,10 @@ for i, indicator_name in enumerate(extra_indicators, start=1):
         kind="range",
     )
 
-# Displays CSAT values across the configured demographic or experience factors.
+# ==================================================
+# CSAT by factor (same design as the departments dashboard)
+# ==================================================
+
 with st.container(border=True):
     st.markdown(
         '<div class="card-title" style="text-align:center;">CSAT حسب العوامل</div>',
@@ -475,7 +507,10 @@ with st.container(border=True):
     )
     st.plotly_chart(factor_fig, use_container_width=True, config={"displayModeBar": False})
 
-# Displays the five most recent records that match the current filter selection.
+# ==================================================
+# Most recent entries (last 5 within the current selection)
+# ==================================================
+
 st.subheader("أحدث المدخلات")
 
 st.markdown("""
@@ -495,7 +530,6 @@ st.markdown("""
 
 
 def make_row(r):
-    # Builds one HTML table row for an individual survey record.
     return (
         f'<tr>'
         f'<td>{r.get("gender") or "—"}</td>'
