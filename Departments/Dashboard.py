@@ -333,52 +333,415 @@ if not matching_records:
     st.stop()
 
 
-def _combine_records(records):
-    if len(records) == 1:
-        return records[0]
+def _weighted_indicator(records, code):
+    """
+    Reproduce the Power BI filter-context calculation from stored groups.
 
-    unique_depts = {r["department"] for r in records}
-    unique_services = {r["service"] for r in records}
-    unique_years = {r["year"] for r in records}
-    unique_periods = {r["period"] for r in records}
+    For CES/NPS, data_service stores each group's valid response count.
+    Weighted averaging by that denominator is mathematically equivalent to
+    calculating the measure over all raw rows in the current filter context.
+    """
+    weighted_pairs = []
 
-    combined = {
-        "section": next(iter(unique_depts)) if len(unique_depts) == 1 else "عدة قطاعات",
-        "department": next(iter(unique_depts)) if len(unique_depts) == 1 else "عدة قطاعات",
-        "service": next(iter(unique_services)) if len(unique_services) == 1 else f"متوسط {len(unique_services)} خدمة",
-        "year": next(iter(unique_years)) if len(unique_years) == 1 else "عدة سنوات",
-        "period": next(iter(unique_periods)) if len(unique_periods) == 1 else "عدة فترات",
+    for record in records:
+        value = _number_or_none(
+            record.get(f"{code}_current")
+        )
+        count = _number_or_none(
+            record.get(f"{code}_valid_count")
+        )
+
+        if (
+            value is not None
+            and count is not None
+            and count > 0
+        ):
+            weighted_pairs.append(
+                (value, count)
+            )
+
+    if weighted_pairs:
+        total_count = sum(
+            count
+            for _, count in weighted_pairs
+        )
+
+        return sum(
+            value * count
+            for value, count in weighted_pairs
+        ) / total_count
+
+    # Calculated/manual records may not have a raw denominator.
+    return _average_ignoring_none(
+        record.get(f"{code}_current")
+        for record in records
+    )
+
+
+def _weighted_factor(records, factor_name):
+    """Aggregate one CSAT factor using its valid participant counts."""
+    weighted_pairs = []
+    fallback_values = []
+
+    for record in records:
+        factor = (
+            record.get("factors", {})
+            .get(factor_name)
+        )
+
+        if not factor:
+            continue
+
+        value = _number_or_none(
+            factor.get("current_value")
+        )
+        count = _number_or_none(
+            factor.get("participants_count")
+        )
+
+        if value is None:
+            continue
+
+        fallback_values.append(value)
+
+        if count is not None and count > 0:
+            weighted_pairs.append(
+                (value, count)
+            )
+
+    if weighted_pairs:
+        total_count = sum(
+            count
+            for _, count in weighted_pairs
+        )
+
+        return sum(
+            value * count
+            for value, count in weighted_pairs
+        ) / total_count
+
+    return _average_ignoring_none(
+        fallback_values
+    )
+
+
+def _aggregate_period(records):
+    """
+    Aggregate all matching DB partitions for ONE half-year.
+
+    CES/NPS use their exact valid-response denominators, matching the
+    Power BI measures after 99/blanks are excluded.
+    """
+    if not records:
+        return {}
+
+    result = {
+        "factors": {},
+    }
+
+    # CES / NPS match the raw Power BI measures through denominator weights.
+    result["ces_current"] = _weighted_indicator(
+        records,
+        "ces",
+    )
+    result["nps_current"] = _weighted_indicator(
+        records,
+        "nps",
+    )
+
+    # CSAT remains based on the project's seven-factor method.
+    all_factor_names = {
+        name
+        for record in records
+        for name in record.get("factors", {})
+    }
+
+    factor_values = []
+
+    for factor_name in all_factor_names:
+        factor_value = _weighted_factor(
+            records,
+            factor_name,
+        )
+
+        result["factors"][factor_name] = {
+            "current_value": factor_value,
+        }
+
+        if factor_value is not None:
+            factor_values.append(
+                factor_value
+            )
+
+    result["csat_current"] = (
+        sum(factor_values) / len(factor_values)
+        if factor_values
+        else _average_ignoring_none(
+            record.get("csat_current")
+            for record in records
+        )
+    )
+
+    for code in ("csat", "ces", "nps"):
+        result[f"{code}_target"] = _average_ignoring_none(
+            record.get(f"{code}_target")
+            for record in records
+        )
+
+    result["department"] = (
+        next(iter({
+            r.get("department")
+            for r in records
+            if r.get("department")
+        }))
+        if len({
+            r.get("department")
+            for r in records
+            if r.get("department")
+        }) == 1
+        else "عدة قطاعات"
+    )
+
+    services = {
+        r.get("service")
+        for r in records
+        if r.get("service")
+    }
+
+    result["service"] = (
+        next(iter(services))
+        if len(services) == 1
+        else f"متوسط {len(services)} خدمة"
+    )
+
+    result["period"] = (
+        records[0].get("period")
+    )
+
+    return result
+
+
+def _average_aggregates(aggregates):
+    """
+    Average already-calculated period/year results equally.
+
+    This is where H1 and H2 are averaged 50/50 for the full-year view,
+    matching the reporting rule the project uses.
+    """
+    aggregates = [
+        item
+        for item in aggregates
+        if item
+    ]
+
+    if not aggregates:
+        return {}
+
+    if len(aggregates) == 1:
+        return aggregates[0]
+
+    result = {
         "factors": {},
     }
 
     for code in ("csat", "ces", "nps"):
-        for suffix in ("prev", "current", "target"):
-            key = f"{code}_{suffix}"
-            combined[key] = _average_ignoring_none(r.get(key) for r in records)
+        result[f"{code}_current"] = _average_ignoring_none(
+            item.get(f"{code}_current")
+            for item in aggregates
+        )
+
+        result[f"{code}_target"] = _average_ignoring_none(
+            item.get(f"{code}_target")
+            for item in aggregates
+        )
 
     all_factor_names = {
         name
-        for r in records
-        for name in r.get("factors", {})
+        for item in aggregates
+        for name in item.get("factors", {})
     }
+
     for factor_name in all_factor_names:
-        # نستبعد أي سجل عدد المشاركين فيه لهذا العامل صفر أو فاضي —
-        # هذا معناه "ما فيه بيانات فعلية"، مو تقييم حقيقي بصفر، وإدخاله
-        # بالمتوسط كان يسحب الرقم شوي عن قيمته الحقيقية.
-        values = [
-            r["factors"][factor_name]["current_value"]
-            for r in records
-            if factor_name in r.get("factors", {})
-            and r["factors"][factor_name].get("participants_count")
-        ]
-        combined["factors"][factor_name] = {
-            "current_value": _average_ignoring_none(values),
+        result["factors"][factor_name] = {
+            "current_value": _average_ignoring_none(
+                item.get("factors", {})
+                .get(factor_name, {})
+                .get("current_value")
+                for item in aggregates
+            ),
         }
+
+    departments = {
+        item.get("department")
+        for item in aggregates
+        if item.get("department")
+    }
+
+    services = {
+        item.get("service")
+        for item in aggregates
+        if item.get("service")
+    }
+
+    result["department"] = (
+        next(iter(departments))
+        if len(departments) == 1
+        else "عدة قطاعات"
+    )
+
+    result["service"] = (
+        next(iter(services))
+        if len(services) == 1
+        else "عدة خدمات"
+    )
+
+    return result
+
+
+def _combine_records(records):
+    """
+    Dashboard calculation flow:
+
+    1) For each year and half-year, reproduce the Power BI measure over
+       all raw-response partitions matching the filters.
+    2) If H1 + H2 are selected, average the two half-year results equally.
+    3) If several years are selected, average their yearly results equally.
+    """
+    if not records:
+        return {}
+
+    years = sorted({
+        r.get("year")
+        for r in records
+        if r.get("year") is not None
+    })
+
+    yearly_results = []
+
+    for year in years:
+        year_records = [
+            r for r in records
+            if r.get("year") == year
+        ]
+
+        periods = [
+            period
+            for period in (
+                "النصف الأول",
+                "النصف الثاني",
+            )
+            if any(
+                r.get("period") == period
+                for r in year_records
+            )
+        ]
+
+        period_results = []
+
+        for period in periods:
+            period_records = [
+                r for r in year_records
+                if r.get("period") == period
+            ]
+
+            period_results.append(
+                _aggregate_period(
+                    period_records
+                )
+            )
+
+        year_result = _average_aggregates(
+            period_results
+        )
+        year_result["year"] = year
+        year_result["period"] = (
+            periods[0]
+            if len(periods) == 1
+            else "السنة كاملة"
+        )
+
+        yearly_results.append(
+            year_result
+        )
+
+    combined = _average_aggregates(
+        yearly_results
+    )
+
+    combined["year"] = (
+        years[0]
+        if len(years) == 1
+        else "عدة سنوات"
+    )
+
+    combined["period"] = (
+        yearly_results[0].get("period")
+        if len(yearly_results) == 1
+        else "عدة فترات"
+    )
 
     return combined
 
 
-rec = _combine_records(matching_records)
+def _previous_period(year, period):
+    if period == "النصف الثاني":
+        return year, "النصف الأول"
+
+    if period == "النصف الأول":
+        return year - 1, "النصف الثاني"
+
+    return None, None
+
+
+rec = _combine_records(
+    matching_records
+)
+
+# --------------------------------------------------
+# Previous value
+# --------------------------------------------------
+# Previous is always derived from the actual previous period/year current
+# result. Stored PrevValue is not used for the dashboard display.
+previous_rec = {}
+
+if len(selected_years) == 1:
+    current_year = selected_years[0]
+
+    if len(selected_periods) == 1:
+        previous_year, previous_period = _previous_period(
+            current_year,
+            selected_periods[0],
+        )
+
+        if previous_year is not None and previous_period is not None:
+            previous_records = [
+                r for r in mock_records
+                if r["year"] == previous_year
+                and r["period"] == previous_period
+                and r["department"] in selected_depts
+                and r["service"] in selected_services
+            ]
+
+            if previous_records:
+                previous_rec = _combine_records(
+                    previous_records
+                )
+
+    else:
+        previous_year = current_year - 1
+
+        previous_records = [
+            r for r in mock_records
+            if r["year"] == previous_year
+            and r["period"] in selected_periods
+            and r["department"] in selected_depts
+            and r["service"] in selected_services
+        ]
+
+        if previous_records:
+            previous_rec = _combine_records(
+                previous_records
+            )
 
 LRM = "\u200e"
 st.subheader("المؤشرات الرئيسية")
@@ -463,7 +826,7 @@ kpi_block(
     col_csat,
     "CSAT - رضا العملاء",
     rec.get("csat_current"),
-    rec.get("csat_prev"),
+    previous_rec.get("csat_current"),
     _target_or_default("csat", rec.get("csat_target")),
     kind="percent",
 )
@@ -472,7 +835,7 @@ kpi_block(
     col_ces,
     "CES - جهد العميل",
     rec.get("ces_current"),
-    rec.get("ces_prev"),
+    previous_rec.get("ces_current"),
     _target_or_default("ces", rec.get("ces_target")),
     kind="range",
 )
@@ -481,7 +844,7 @@ kpi_block(
     col_nps,
     "NPS - توصية العملاء",
     rec.get("nps_current"),
-    rec.get("nps_prev"),
+    previous_rec.get("nps_current"),
     _target_or_default("nps", rec.get("nps_target")),
     kind="range",
 )
@@ -489,41 +852,53 @@ kpi_block(
 col_top5, col_chart = st.columns([0.8, 1.4])
 
 def _top_services_by_csat(records, limit=5):
-    """
-    Aggregate CSAT by (department, service) first, then rank services.
-    This prevents the same service from appearing more than once because
-    it has records from multiple years or periods.
-    """
-    grouped = {}
-
-    for record in records:
-        department = record.get("department")
-        service = record.get("service")
-        key = (department, service)
-
-        if key not in grouped:
-            grouped[key] = []
-
-        value = _number_or_none(record.get("csat_current"))
-        if value is not None:
-            grouped[key].append(value)
-
+    """Rank services using the same period/year aggregation rules."""
     services = []
-    for (department, service), values in grouped.items():
-        csat_value = _average_ignoring_none(values)
+
+    for service_name in sorted({
+        r.get("service")
+        for r in records
+        if r.get("service")
+    }):
+        service_records = [
+            r for r in records
+            if r.get("service") == service_name
+        ]
+
+        service_result = _combine_records(
+            service_records
+        )
+
+        csat_value = _number_or_none(
+            service_result.get("csat_current")
+        )
+
         if csat_value is None:
             continue
 
-        services.append({
-            "department": department,
-            "service": service,
-            "csat_current": csat_value,
-        })
+        departments = {
+            r.get("department")
+            for r in service_records
+            if r.get("department")
+        }
+
+        services.append(
+            {
+                "department": (
+                    next(iter(departments))
+                    if len(departments) == 1
+                    else "عدة قطاعات"
+                ),
+                "service": service_name,
+                "csat_current": csat_value,
+            }
+        )
 
     services.sort(
         key=lambda item: item["csat_current"],
         reverse=True,
     )
+
     return services[:limit]
 
 
@@ -581,21 +956,21 @@ with col_chart:
         indicator_specs = [
             (
                 "CSAT",
-                rec.get("csat_prev"),
+                previous_rec.get("csat_current"),
                 rec.get("csat_current"),
                 _target_or_default("csat", rec.get("csat_target")),
                 list(INDICATOR_RANGES["csat"]),
             ),
             (
                 "CES",
-                rec.get("ces_prev"),
+                previous_rec.get("ces_current"),
                 rec.get("ces_current"),
                 _target_or_default("ces", rec.get("ces_target")),
                 list(INDICATOR_RANGES["ces"]),
             ),
             (
                 "NPS",
-                rec.get("nps_prev"),
+                previous_rec.get("nps_current"),
                 rec.get("nps_current"),
                 _target_or_default("nps", rec.get("nps_target")),
                 list(INDICATOR_RANGES["nps"]),
