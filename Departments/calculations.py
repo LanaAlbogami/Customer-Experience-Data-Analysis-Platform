@@ -1,90 +1,295 @@
 import pandas as pd
 
-# this function is used to clean the input data, removing any NaN values
-def _clean(responses):
-    return pd.Series(list(responses)).dropna()
+
+# ==================================================
+# Data cleaning
+# ==================================================
+
+def _clean(responses, minimum, maximum):
+    """
+    Clean survey responses and keep only valid answers
+    within the allowed scale.
+
+    Examples:
+    - CSAT / CES: valid answers are 1 to 5
+    - NPS: valid answers are 0 to 10
+
+    NaN, blanks, 99 (Not Applicable), and any value
+    outside the allowed range are excluded completely.
+    """
+
+    answers = pd.to_numeric(
+        pd.Series(list(responses)),
+        errors="coerce",
+    ).dropna()
+
+    return answers[
+        answers.between(
+            minimum,
+            maximum,
+        )
+    ]
 
 
-# Survey-based indicators: CSAT, CES, NPS
+# ==================================================
+# Survey-based indicators
+# ==================================================
 
 def calculate_csat(responses):
     """
     CSAT = Customer Satisfaction Score.
 
-    Input : answers on a 1-5 scale.
-    Rule  : answers of 4 or 5 count as satisfied.
-    Output: percentage of satisfied customers, 0..100. Higher is better.
+    Input:
+        Answers on a 1-5 scale.
+
+    Valid answers:
+        1, 2, 3, 4, 5
+
+    Classification:
+        4-5 = Satisfied
+        3   = Neutral
+        1-2 = Dissatisfied
+
+    Formula:
+        CSAT =
+        Number of satisfied responses (4 or 5)
+        --------------------------------------
+        Number of valid responses (1 to 5)
+        * 100
+
+    Output:
+        Percentage from 0 to 100.
+
+    Important:
+        99, NaN, blanks, and values outside 1-5
+        are excluded from both numerator and denominator.
     """
-    answers = _clean(responses)
+
+    answers = _clean(
+        responses,
+        minimum=1,
+        maximum=5,
+    )
+
     if len(answers) == 0:
         return None
 
-    satisfied = answers.isin([4, 5]).sum()
-    return round(satisfied / len(answers) * 100, 2)
+    satisfied = answers.isin(
+        [4, 5]
+    ).sum()
+
+    return round(
+        satisfied
+        / len(answers)
+        * 100,
+        2,
+    )
 
 
 def calculate_ces(responses):
     """
-    CES = Customer Effort Score, as a NET score (not an average).
+    CES = Customer Effort Score as a NET score.
 
-    Input : answers on a 1-5 scale (5 = very easy, 1 = very difficult).
-    Rule  : CES = % who found it easy (4-5) minus % who found it hard (1-2).
-    Output: a score from -100 to +100. HIGHER is better (easier service).
+    Input:
+        Answers on a 1-5 scale.
+
+    Valid answers:
+        1, 2, 3, 4, 5
+
+    Classification:
+        4-5 = Easy
+        3   = Neutral
+        1-2 = Difficult
+
+    Formula:
+        CES =
+        % Easy
+        -
+        % Difficult
+
+    Where:
+        % Easy =
+        Number of responses 4 or 5
+        --------------------------
+        Number of valid responses
+        * 100
+
+        % Difficult =
+        Number of responses 1 or 2
+        --------------------------
+        Number of valid responses
+        * 100
+
+    Output:
+        Score from -100 to +100.
+
+    Important:
+        99, NaN, blanks, and values outside 1-5
+        are excluded from the denominator.
     """
-    answers = _clean(responses)
+
+    answers = _clean(
+        responses,
+        minimum=1,
+        maximum=5,
+    )
+
     if len(answers) == 0:
         return None
 
-    easy = answers.isin([4, 5]).sum() / len(answers) * 100
-    hard = answers.isin([1, 2]).sum() / len(answers) * 100
-    return round(easy - hard, 2)
+    easy = (
+        answers.isin(
+            [4, 5]
+        ).sum()
+        / len(answers)
+        * 100
+    )
+
+    hard = (
+        answers.isin(
+            [1, 2]
+        ).sum()
+        / len(answers)
+        * 100
+    )
+
+    return round(
+        easy - hard,
+        2,
+    )
 
 
 def calculate_nps(responses):
     """
     NPS = Net Promoter Score.
 
-    Input : answers on a 0-10 scale.
-    Rule  : 9-10 = promoter, 7-8 = passive, 0-6 = detractor.
-            NPS = %promoters - %detractors.
-    Output: a score from -100 to +100. Higher is better.
+    Input:
+        Answers on a 0-10 scale.
+
+    Valid answers:
+        0 through 10
+
+    Classification:
+        9-10 = Promoters
+        7-8  = Passives
+        0-6  = Detractors
+
+    Formula:
+        NPS =
+        % Promoters
+        -
+        % Detractors
+
+    Where:
+        % Promoters =
+        Number of responses 9 or 10
+        ---------------------------
+        Number of valid responses
+        * 100
+
+        % Detractors =
+        Number of responses 0 to 6
+        --------------------------
+        Number of valid responses
+        * 100
+
+    Output:
+        Score from -100 to +100.
+
+    Important:
+        Passives (7-8) are included in the denominator
+        but not in either side of the subtraction.
+
+        99, NaN, blanks, and values outside 0-10
+        are excluded completely.
     """
-    answers = _clean(responses)
+
+    answers = _clean(
+        responses,
+        minimum=0,
+        maximum=10,
+    )
+
     if len(answers) == 0:
         return None
 
-    promoters = answers.isin([9, 10]).sum() / len(answers) * 100
-    detractors = (answers <= 6).sum() / len(answers) * 100
-    return round(promoters - detractors, 2)
+    promoters = (
+        answers.isin(
+            [9, 10]
+        ).sum()
+        / len(answers)
+        * 100
+    )
+
+    detractors = (
+        answers.between(
+            0,
+            6,
+        ).sum()
+        / len(answers)
+        * 100
+    )
+
+    return round(
+        promoters - detractors,
+        2,
+    )
 
 
-# Comparison indicators: change over time, gap vs. target
+# ==================================================
+# Comparison indicators
+# ==================================================
 
-def calculate_change(previous_value, current_value):
+def calculate_change(
+    previous_value,
+    current_value,
+):
     """
-    Compare the current period against the previous one.
+    Compare the current period against the previous period.
 
-    Returns a dictionary:
-        change          -> current - previous (absolute difference)
-        change_percent  -> the difference as a % of the previous value
-                           (None if the previous value is 0, to avoid
-                           dividing by zero)
-        direction       -> "increase" / "decrease" / "no change"
+    Returns:
+        change
+            Current value - previous value
+
+        change_percent
+            Change as a percentage of the previous value.
+            Returns None if previous value is 0.
+
+        direction
+            increase / decrease / no change
     """
-    previous_value = float(previous_value)
-    current_value = float(current_value)
 
-    change = round(current_value - previous_value, 2)
+    previous_value = float(
+        previous_value
+    )
+
+    current_value = float(
+        current_value
+    )
+
+    change = round(
+        current_value
+        - previous_value,
+        2,
+    )
 
     if previous_value == 0:
-        change_percent = None          # cannot divide by zero
+        change_percent = None
+
     else:
-        change_percent = round(change / abs(previous_value) * 100, 1)
+        change_percent = round(
+            change
+            / abs(previous_value)
+            * 100,
+            1,
+        )
 
     if change > 0:
         direction = "increase"
+
     elif change < 0:
         direction = "decrease"
+
     else:
         direction = "no change"
 
@@ -95,42 +300,84 @@ def calculate_change(previous_value, current_value):
     }
 
 
-def calculate_gap(current_value, target_value,
-                  higher_is_better=True, close_threshold=5.0):
+def calculate_gap(
+    current_value,
+    target_value,
+    higher_is_better=True,
+    close_threshold=5.0,
+):
     """
     Compare the current value against the target value.
 
-    higher_is_better : True for CSAT / CES / NPS (all three are scores
-                       where higher = better), False for indicators like
-                       response time where lower = better.
-    close_threshold  : how far below the target (in %) still counts as
-                       "Close" instead of "Below Target". Default 5%.
+    higher_is_better:
+        True for CSAT, CES, and NPS.
 
-    Returns a dictionary:
-        gap          -> current - target
-        gap_percent  -> the gap as a % of the target (None if target is 0)
-        status       -> "Met" / "Close" / "Below Target"
+    close_threshold:
+        Percentage difference from the target that still
+        counts as "Close".
+
+    Returns:
+        gap
+            Current value - target value
+
+        gap_percent
+            Gap as percentage of target.
+            Returns None when target = 0.
+
+        status
+            Met / Close / Below Target
     """
-    current_value = float(current_value)
-    target_value = float(target_value)
 
-    gap = round(current_value - target_value, 2)
+    current_value = float(
+        current_value
+    )
+
+    target_value = float(
+        target_value
+    )
+
+    gap = round(
+        current_value
+        - target_value,
+        2,
+    )
 
     if target_value == 0:
         gap_percent = None
-    else:
-        gap_percent = round(gap / abs(target_value) * 100, 1)
 
-    # "Performance" = how much better than target we are.
-    # For lower-is-better indicators the sign is flipped.
-    performance = gap if higher_is_better else -gap
+    else:
+        gap_percent = round(
+            gap
+            / abs(target_value)
+            * 100,
+            1,
+        )
+
+    # Performance means how much better
+    # the current result is than the target.
+    performance = (
+        gap
+        if higher_is_better
+        else -gap
+    )
 
     if performance >= 0:
         status = "Met"
-    elif gap_percent is not None and abs(gap_percent) <= close_threshold:
+
+    elif (
+        gap_percent is not None
+        and abs(gap_percent)
+        <= close_threshold
+    ):
         status = "Close"
-    elif gap_percent is None and abs(gap) <= close_threshold:
+
+    elif (
+        gap_percent is None
+        and abs(gap)
+        <= close_threshold
+    ):
         status = "Close"
+
     else:
         status = "Below Target"
 
@@ -141,27 +388,123 @@ def calculate_gap(current_value, target_value,
     }
 
 
-def summarize_indicator(previous_value, current_value, target_value,
-                        higher_is_better=True):
+def summarize_indicator(
+    previous_value,
+    current_value,
+    target_value,
+    higher_is_better=True,
+):
     """
-    Convenience function: runs calculate_change + calculate_gap together
-    and returns one flat dictionary. This is what the Dashboard and the
-    Reports pages will normally call.
+    Run calculate_change and calculate_gap together
+    and return one combined dictionary.
     """
-    change = calculate_change(previous_value, current_value)
-    gap = calculate_gap(current_value, target_value, higher_is_better)
+
+    change = calculate_change(
+        previous_value,
+        current_value,
+    )
+
+    gap = calculate_gap(
+        current_value,
+        target_value,
+        higher_is_better,
+    )
 
     result = {}
-    result.update(change)
-    result.update(gap)
+
+    result.update(
+        change
+    )
+
+    result.update(
+        gap
+    )
+
     return result
 
 
-# Quick self-test: run "python calculations.py" to check the math.
+# ==================================================
+# Quick self-test
+# ==================================================
+
 if __name__ == "__main__":
-    print("CSAT:", calculate_csat([5, 4, 3, 5, 2, 4]))   # 66.67 %
-    print("CES :", calculate_ces([5, 4, 3, 1, 2]))       # 40.0 - 40.0 = 0.0
-    print("NPS :", calculate_nps([10, 9, 8, 7, 6, 3]))   # 33.33 - 33.33 = 0.0
-    print("Empty:", calculate_csat([]))                  # None
-    print("Change:", calculate_change(41, 55))
-    print("Gap   :", calculate_gap(55, 60))
+
+    print(
+        "CSAT:",
+        calculate_csat(
+            [5, 4, 3, 5, 2, 4]
+        ),
+    )
+    # 4 satisfied out of 6
+    # = 66.67%
+
+    print(
+        "CSAT with 99:",
+        calculate_csat(
+            [5, 4, 3, 99, 99]
+        ),
+    )
+    # Valid answers = 5, 4, 3
+    # Satisfied = 5, 4
+    # = 2 / 3 = 66.67%
+
+    print(
+        "CES:",
+        calculate_ces(
+            [5, 4, 3, 1, 2]
+        ),
+    )
+    # Easy = 40%
+    # Difficult = 40%
+    # CES = 0
+
+    print(
+        "CES with 99:",
+        calculate_ces(
+            [5, 4, 3, 1, 99]
+        ),
+    )
+    # Valid answers = 4
+    # Easy = 50%
+    # Difficult = 25%
+    # CES = 25
+
+    print(
+        "NPS:",
+        calculate_nps(
+            [10, 9, 8, 7, 6, 3]
+        ),
+    )
+    # Promoters = 33.33%
+    # Detractors = 33.33%
+    # NPS = 0
+
+    print(
+        "NPS with 99:",
+        calculate_nps(
+            [10, 9, 8, 7, 6, 99]
+        ),
+    )
+    # 99 excluded
+
+    print(
+        "Empty:",
+        calculate_csat([]),
+    )
+    # None
+
+    print(
+        "Change:",
+        calculate_change(
+            41,
+            55,
+        ),
+    )
+
+    print(
+        "Gap:",
+        calculate_gap(
+            55,
+            60,
+        ),
+    )
