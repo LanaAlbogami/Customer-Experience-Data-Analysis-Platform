@@ -29,6 +29,14 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     direction: rtl;
 }
 
+.filter-label {
+    color: #6B7398;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    text-align: right;
+}
+
 .summary-label {
     color: #6B7398;
     font-size: 13px;
@@ -76,7 +84,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     text-align: center;
 }
 .badge-good { background: #E4F6F1; color: #2FA88E; }
-.badge-mid { background: #FBF2DD; color: #B98A12; }
+.badge-mid { background: #FDEEE0; color: #D6822B; }
 .badge-bad { background: #FCEBED; color: #C94B5B; }
 
 .modern-table { border-collapse: separate; border-spacing: 0; width: 100%; }
@@ -103,32 +111,59 @@ def _num(value):
 
 
 def _csat_tier(value):
+    # 85 فأعلى = أخضر، من 50 إلى 84 = برتقالي، تحت 50 = أحمر
     if value is None:
         return "badge-mid"
-    if value >= 80:
+    if value >= 85:
         return "badge-good"
-    if value >= 65:
+    if value >= 50:
         return "badge-mid"
     return "badge-bad"
 
 
-records = fetch_records_from_db()
+all_records = fetch_records_from_db()
 
-if not records:
+if not all_records:
     st.warning("لا توجد بيانات بعد بقاعدة البيانات")
     st.stop()
 
 st.markdown(
     """
     <div>
-        <h1 style="color:#16213E; font-weight:900; margin-bottom:4px;">تحليل الجهات</h1>
-        <p style="color:#6B7398; font-size:14px; margin-bottom:24px;">
+        <h1 style="color:#16213E; font-weight:900; margin-bottom:4px;">
+            تحليل رضا الجهات الحكومية عن الخدمات المقدمة لهم
+        </h1>
+        <p style="color:#6B7398; font-size:14px; margin-bottom:20px;">
             متوسط رضا العملاء (CSAT) لكل جهة، محسوب من كل الخدمات المرتبطة بها
         </p>
     </div>
     """,
     unsafe_allow_html=True,
 )
+
+# ==================================================
+# Period filter (فلتر الفترة)
+# ==================================================
+
+all_periods = sorted({r["period"] for r in all_records})
+period_options = ["الكل"] + all_periods
+
+st.markdown('<div class="filter-label">الفترة</div>', unsafe_allow_html=True)
+selected_period = st.selectbox(
+    "الفترة",
+    options=period_options,
+    label_visibility="collapsed",
+)
+
+records = (
+    all_records
+    if selected_period == "الكل"
+    else [r for r in all_records if r["period"] == selected_period]
+)
+
+if not records:
+    st.warning("لا توجد بيانات مطابقة لهذا الاختيار.")
+    st.stop()
 
 # ==================================================
 # Aggregate CSAT per entity (الجهة)
@@ -288,7 +323,7 @@ with sort_col:
 table_rows = [
     {
         "entity": r["entity"],
-        "section": r.get("department", "—"),
+        "sector": r.get("department", "—"),
         "service": r.get("service", "—"),
         "csat": _num(r.get("csat_current")),
         "nps": _num(r.get("nps_current")),
@@ -330,7 +365,7 @@ def _make_table_row(row):
     return (
         "<tr>"
         f'<td>{row["entity"]}</td>'
-        f'<td style="color:#8A94B5;">{row["section"]}</td>'
+        f'<td style="color:#8A94B5;">{row["sector"]}</td>'
         f'<td style="color:#6B7398;">{row["service"]}</td>'
         f'<td><span class="entity-badge {_csat_tier(row["csat"])}">{_fmt_pct(row["csat"])}</span></td>'
         f'<td>{_fmt_signed(row["nps"])}</td>'
@@ -352,7 +387,7 @@ else:
         f'border:1px solid {COLORS["border"]}; overflow:hidden; box-shadow: 0 5px 18px rgba(22, 33, 62, 0.05);">'
         f'<table class="modern-table">'
         f'<thead><tr>'
-        f'<th>اسم الجهة</th><th>القسم</th><th>الخدمة</th><th>CSAT</th><th>NPS</th><th>CES</th>'
+        f'<th>اسم الجهة</th><th>قطاع</th><th>الخدمة</th><th>CSAT</th><th>NPS</th><th>CES</th>'
         f'</tr></thead><tbody>{rows_html}</tbody></table></div>'
     )
 

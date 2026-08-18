@@ -438,7 +438,7 @@ def _departments_pages():
         ),
         st.Page(
             "Departments/entities_analysis_page.py",
-            title="الجهات",
+            title="رضا الجهات الحكومية",
             icon=":material/apartment:",
         ),
     ]
