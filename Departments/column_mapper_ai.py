@@ -79,6 +79,8 @@ class FactorMapping(BaseModel):
 
 
 class SectionColumnMapping(BaseModel):
+    # يمكن أن يحتوي الملف على أكثر من جهة، لذلك الجهة عمود داخل Excel.
+    entity_column: str | None
     service_column: str | None
     section_column: str | None
 
@@ -172,6 +174,12 @@ def _sanitize(
         time_mode = "unknown"
 
     return {
+        "entity_column":
+            _valid_column(
+                result.entity_column,
+                allowed,
+            ),
+
         "service_column":
             _valid_column(
                 result.service_column,
@@ -317,35 +325,39 @@ def map_section_columns_with_ai(
 1. استخدم فقط أسماء الأعمدة الموجودة في قائمة أعمدة Excel حرفيًا.
 2. لا تطلب ولا تفترض أي قيم من داخل الصفوف.
 3. لا تطابق أعمدة التعليقات أو الملاحظات؛ المستخدم سيختارها بنفسه.
-4. service_column:
+4. entity_column:
+   عمود اسم الجهة الحكومية أو المنظمة. الملف قد يحتوي على أكثر من جهة،
+   لذلك يجب اختيار العمود الذي يحدد الجهة لكل صف.
+5. service_column:
    عمود اسم الخدمة.
-5. section_column:
+6. section_column:
    عمود القسم أو الإدارة إذا وجد.
-6. time_mode:
+7. time_mode:
    - date: يوجد عمود تاريخ يمكن استخراج السنة والنصف منه.
    - combined: السنة والفترة موجودتان في عمود واحد.
    - separate: السنة والفترة في عمودين منفصلين.
    - unknown: لا يمكن تحديد الطريقة بثقة.
-7. إذا كان data_mode = raw:
+8. إذا كان data_mode = raw:
    - اربط كل عامل CSAT بعمود إجابات خام من 1 إلى 5.
    - حدد أعمدة CES الخام إن وجدت.
    - حدد عمود NPS الخام إن وجد.
    - حدد response_id_column إن وجد.
    - participants_column يجب أن يكون null.
    - bps_column يجب أن يكون null.
-8. إذا كان data_mode = calculated:
+9. إذا كان data_mode = calculated:
    - اربط كل عامل CSAT بعمود نتيجته المحسوبة.
    - حدد نتيجة CES إن وجدت.
    - حدد نتيجة NPS إن وجدت.
    - حدد نتيجة BPS إن وجدت.
    - حدد عدد المشاركين إن وجد.
    - response_id_column يجب أن يكون null.
-9. لا تستخدم العمود نفسه لأكثر من عامل أو مؤشر.
-10. إذا كان العمود عامًا مثل Q1 أو Question 1 بلا وصف كافٍ:
+10. لا تستخدم العمود نفسه لأكثر من عامل أو مؤشر.
+11. إذا كان العمود عامًا مثل Q1 أو Question 1 بلا وصف كافٍ:
     لا تخمن، أرجع null وأضف تحذيرًا.
-11. أرجع factor_mappings لكل عامل مطلوب،
+12. أرجع factor_mappings لكل عامل مطلوب،
     حتى لو كانت column_name = null.
-12. إذا لم تجد حقلًا بثقة، استخدم null بدل التخمين.
+13. إذا لم تجد حقلًا بثقة، استخدم null بدل التخمين.
+14. entity_column وservice_column حقول أساسية. لا تخمنهما إذا لم يكن الاسم واضحًا.
 """
 
     interaction = client.interactions.create(

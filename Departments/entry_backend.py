@@ -13,6 +13,7 @@ from database.connection import SessionLocal
 from database.models import (
     Factor,
     FactorResult,
+    GovernmentEntity,
     Indicator,
     IndicatorResult,
     MeasurementRecord,
@@ -111,12 +112,91 @@ def get_years():
 
 # Sections and services from the database
 
-# Return the section names from the database.
-def get_sections() -> list[str]:
+
+def get_entities() -> list[str]:
+    """Return all government entity names from the database."""
     with SessionLocal() as session:
-        sections = session.scalars(
+        entities = session.scalars(
+            select(GovernmentEntity)
+            .order_by(GovernmentEntity.entity_name)
+        ).all()
+
+        return [
+            entity.entity_name
+            for entity in entities
+        ]
+
+
+def _get_entity_by_name(
+    session,
+    entity_name: str,
+) -> GovernmentEntity | None:
+    entity_name = str(entity_name).strip()
+
+    if not entity_name:
+        return None
+
+    return session.scalar(
+        select(GovernmentEntity)
+        .where(
+            GovernmentEntity.entity_name == entity_name
+        )
+    )
+
+
+def _get_or_create_entity(
+    session,
+    entity_name: str,
+) -> GovernmentEntity:
+    """Fetch the government entity, or create it during upload. Supports multiple entities per file."""
+    entity_name = str(entity_name).strip()
+
+    if not entity_name:
+        raise ValueError(
+            "اسم الجهة الحكومية مطلوب."
+        )
+
+    entity = _get_entity_by_name(
+        session,
+        entity_name,
+    )
+
+    if entity is None:
+        entity = GovernmentEntity(
+            entity_name=entity_name,
+        )
+        session.add(entity)
+        session.flush()
+
+    return entity
+
+
+# Return section names. When an entity is supplied, only its sections are returned.
+def get_sections(
+    entity_name: str | None = None,
+) -> list[str]:
+    with SessionLocal() as session:
+        statement = (
             select(Section)
             .order_by(Section.section_name)
+        )
+
+        if entity_name:
+            statement = (
+                statement
+                .join(
+                    GovernmentEntity,
+                    Section.entity_id
+                    == GovernmentEntity.entity_id,
+                )
+                .where(
+                    GovernmentEntity.entity_name
+                    == str(entity_name).strip()
+                )
+            )
+
+        sections = session.scalars(
+            statement
         ).all()
 
         return [
@@ -125,26 +205,64 @@ def get_sections() -> list[str]:
         ]
 
 
-def get_departments() -> list[str]:
+def get_departments(
+    entity_name: str | None = None,
+) -> list[str]:
     """
-    Legacy name kept for compatibility with the current entry page.
+    Legacy name kept for compatibility with older pages.
     Internally returns sections, not departments.
     """
-    return get_sections()
+    return get_sections(entity_name)
 
 
 def _get_section_by_name(
     session,
     section_name: str,
+    entity_name: str | None = None,
 ) -> Section | None:
-    return session.scalar(
+    section_name = str(section_name).strip()
+
+    if not section_name:
+        return None
+
+    statement = (
         select(Section)
-        .where(Section.section_name == section_name)
+        .where(
+            Section.section_name == section_name
+        )
     )
 
-# Fetch the section, or create it when a new file is uploaded.
+    if entity_name:
+        statement = (
+            statement
+            .join(
+                GovernmentEntity,
+                Section.entity_id
+                == GovernmentEntity.entity_id,
+            )
+            .where(
+                GovernmentEntity.entity_name
+                == str(entity_name).strip()
+            )
+        )
+
+    matches = list(
+        session.scalars(statement).all()
+    )
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"يوجد أكثر من قسم باسم {section_name}. "
+            "حددي الجهة الحكومية أولًا."
+        )
+
+    return matches[0] if matches else None
+
+
+# Fetch the section, or create it under the selected entity during upload.
 def _get_or_create_section(
     session,
+    entity: GovernmentEntity,
     section_name: str,
 ) -> Section:
     section_name = str(section_name).strip()
@@ -152,13 +270,17 @@ def _get_or_create_section(
     if not section_name:
         raise ValueError("اسم القسم مطلوب.")
 
-    section = _get_section_by_name(
-        session,
-        section_name,
+    section = session.scalar(
+        select(Section)
+        .where(
+            Section.entity_id == entity.entity_id,
+            Section.section_name == section_name,
+        )
     )
 
     if section is None:
         section = Section(
+            entity_id=entity.entity_id,
             section_name=section_name,
         )
         session.add(section)
@@ -167,12 +289,16 @@ def _get_or_create_section(
     return section
 
 
-# Return the services of a specific section from the database.
-def get_services(section_name: str) -> list[str]:
+# Return the services of a specific section.
+def get_services(
+    section_name: str,
+    entity_name: str | None = None,
+) -> list[str]:
     with SessionLocal() as session:
         section = _get_section_by_name(
             session,
             section_name,
+            entity_name=entity_name,
         )
 
         if section is None:
@@ -180,7 +306,9 @@ def get_services(section_name: str) -> list[str]:
 
         services = session.scalars(
             select(Service)
-            .where(Service.section_id == section.section_id)
+            .where(
+                Service.section_id == section.section_id
+            )
             .order_by(Service.service_name)
         ).all()
 
@@ -194,8 +322,12 @@ def _get_service(
     session,
     section_name: str,
     service_name: str,
+    entity_name: str | None = None,
 ) -> Service | None:
-    return session.scalar(
+    section_name = str(section_name).strip()
+    service_name = str(service_name).strip()
+
+    statement = (
         select(Service)
         .join(
             Section,
@@ -206,6 +338,33 @@ def _get_service(
             Service.service_name == service_name,
         )
     )
+
+    if entity_name:
+        statement = (
+            statement
+            .join(
+                GovernmentEntity,
+                Section.entity_id
+                == GovernmentEntity.entity_id,
+            )
+            .where(
+                GovernmentEntity.entity_name
+                == str(entity_name).strip()
+            )
+        )
+
+    matches = list(
+        session.scalars(statement).all()
+    )
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"الخدمة {service_name} موجودة تحت أكثر من جهة. "
+            "حددي الجهة الحكومية أولًا."
+        )
+
+    return matches[0] if matches else None
+
 
 # Fetch the service within the section, or create it on upload.
 def _get_or_create_service(
@@ -459,12 +618,14 @@ def get_previous_values(
     service: str,
     year: int,
     period: str,
+    entity: str | None = None,
 ) -> dict[str, float]:
     with SessionLocal() as session:
         service_row = _get_service(
             session,
             section,
             service,
+            entity_name=entity,
         )
 
         if service_row is None:
@@ -491,12 +652,14 @@ def entry_exists(
     service: str,
     year: int,
     period: str,
+    entity: str | None = None,
 ) -> bool:
     with SessionLocal() as session:
         service_row = _get_service(
             session,
             section,
             service,
+            entity_name=entity,
         )
 
         if service_row is None:
@@ -522,6 +685,7 @@ def validate_entry(
     year: int,
     period: str,
     typed_values: dict[str, dict[str, Any]],
+    entity: str | None = None,
 ) -> list[str]:
     errors = []
 
@@ -535,6 +699,7 @@ def validate_entry(
         service,
         year,
         period,
+        entity=entity,
     ):
         errors.append(
             f"يوجد إدخال محفوظ مسبقًا لـ "
@@ -565,6 +730,7 @@ def save_entry(
     typed_values: dict[str, dict[str, Any]],
     participants: int = 0,
     review: str | None = None,
+    entity: str | None = None,
 ) -> dict[str, Any]:
     """
     Save the manual entry for the indicators shown on the page.
@@ -579,6 +745,7 @@ def save_entry(
         year,
         period,
         typed_values,
+        entity=entity,
     )
 
     if errors:
@@ -594,6 +761,7 @@ def save_entry(
                 session,
                 section,
                 service,
+                entity_name=entity,
             )
 
             if service_row is None:
@@ -885,6 +1053,7 @@ def save_uploaded_records(
         key=lambda item: (
             int(item["year"]),
             1 if item["period"] == "النصف الأول" else 2,
+            str(item.get("entity") or ""),
             str(
                 item.get("section")
                 or item.get("department")
@@ -924,6 +1093,11 @@ def save_uploaded_records(
                 )
 
             for uploaded_record in sorted_records:
+                entity_name = str(
+                    uploaded_record.get("entity")
+                    or ""
+                ).strip()
+
                 section_name = str(
                     uploaded_record.get("section")
                     or uploaded_record.get("department")
@@ -950,6 +1124,11 @@ def save_uploaded_records(
 
                 review = uploaded_record.get("review")
 
+                if not entity_name:
+                    raise ValueError(
+                        "يوجد سجل بدون اسم جهة حكومية."
+                    )
+
                 if not section_name:
                     raise ValueError(
                         "يوجد سجل بدون اسم قسم."
@@ -971,8 +1150,14 @@ def save_uploaded_records(
                         "عدد المشاركين لا يمكن أن يكون سالبًا."
                     )
 
+                entity = _get_or_create_entity(
+                    session,
+                    entity_name,
+                )
+
                 section = _get_or_create_section(
                     session,
+                    entity,
                     section_name,
                 )
 
@@ -1244,11 +1429,17 @@ def get_all_records() -> list[dict[str, Any]]:
     with SessionLocal() as session:
         rows = session.execute(
             select(
+                GovernmentEntity,
                 Section,
                 Service,
                 MeasurementRecord,
                 Indicator,
                 IndicatorResult,
+            )
+            .join(
+                Section,
+                Section.entity_id
+                == GovernmentEntity.entity_id,
             )
             .join(
                 Service,
@@ -1272,6 +1463,7 @@ def get_all_records() -> list[dict[str, Any]]:
             .order_by(
                 MeasurementRecord.year,
                 MeasurementRecord.period,
+                GovernmentEntity.entity_name,
                 Section.section_name,
                 Service.service_name,
                 Indicator.indicator_id,
@@ -1280,6 +1472,7 @@ def get_all_records() -> list[dict[str, Any]]:
 
         return [
             {
+                "Entity": entity.entity_name,
                 "Section": section.section_name,
                 "Department": section.section_name,
                 "Service": service.service_name,
@@ -1301,6 +1494,7 @@ def get_all_records() -> list[dict[str, Any]]:
                 ),
             }
             for (
+                entity,
                 section,
                 service,
                 record,
@@ -1313,7 +1507,7 @@ def get_all_records() -> list[dict[str, Any]]:
 def clear_all_records() -> None:
     """
     Delete measurement results (for testing only).
-    Sections, services, indicators, and factors are not deleted.
+    Government entities, sections, services, indicators, and factors are not deleted.
     """
     with SessionLocal() as session:
         try:
