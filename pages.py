@@ -506,5 +506,3 @@ def run_app():
     # Render the selected page.
     page.run()
 
-
-run_app()

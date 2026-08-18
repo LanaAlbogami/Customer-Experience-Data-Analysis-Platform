@@ -832,7 +832,7 @@ with st.expander(
     )
 
     section_column = optional_column(
-        "عمود اسم القسم",
+        "عمود اسم القطاع",
         available_columns,
         section_column,
         key="review_section",
