@@ -145,6 +145,7 @@ TIME_LABELS = {
 }
 
 REVIEW_WIDGET_KEYS = [
+    "review_entity",
     "review_service",
     "review_section",
     "review_time_mode",
@@ -174,6 +175,7 @@ def mapping_signature(column_names, factor_names, data_mode):
             "columns": column_names,
             "factors": factor_names,
             "mode": data_mode,
+            "mapping_version": 2,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -314,6 +316,9 @@ def parse_year_period(value):
 def required_mapping_gaps(mapping, factor_names):
     gaps = []
 
+    if not mapping.get("entity_column"):
+        gaps.append("اسم الجهة")
+
     if not mapping.get("service_column"):
         gaps.append("اسم الخدمة")
 
@@ -353,6 +358,7 @@ def required_mapping_gaps(mapping, factor_names):
 
 def validate_mapping(
     *,
+    entity_column,
     service_column,
     time_mode,
     date_column,
@@ -366,6 +372,9 @@ def validate_mapping(
     data_mode,
 ):
     errors = []
+
+    if not entity_column:
+        errors.append("عمود اسم الجهة الحكومية مطلوب.")
 
     if not service_column:
         errors.append("عمود اسم الخدمة مطلوب.")
@@ -650,7 +659,8 @@ if (
     matched_indicators.append("BPS")
 
 basic_ready = bool(
-    mapping.get("service_column")
+    mapping.get("entity_column")
+    and mapping.get("service_column")
 )
 
 time_mode_from_ai = mapping.get("time_mode")
@@ -716,6 +726,10 @@ with st.container(border=True):
 
 
 # Suggested values used for saving
+
+entity_column = mapping.get(
+    "entity_column"
+)
 
 service_column = mapping.get(
     "service_column"
@@ -801,6 +815,13 @@ with st.expander(
 ):
     st.caption(
         "راجع الاختيارات التالية. عدّل فقط الحقل غير الصحيح."
+    )
+
+    entity_column = optional_column(
+        "عمود اسم الجهة الحكومية *",
+        available_columns,
+        entity_column,
+        key="review_entity",
     )
 
     service_column = optional_column(
@@ -1000,6 +1021,7 @@ with st.container(border=True):
 
 if save_clicked:
     errors = validate_mapping(
+        entity_column=entity_column,
         service_column=service_column,
         time_mode=time_mode,
         date_column=date_column,
@@ -1099,6 +1121,7 @@ if save_clicked:
                         if data_mode == "raw"
                         else CALCULATED_DATA
                     ),
+                    entity_column=entity_column,
                     service_column=service_column,
                     section_column=section_column,
                     fixed_section=fixed_section,

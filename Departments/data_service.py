@@ -14,6 +14,7 @@ from database.connection import SessionLocal
 from database.models import (
     Factor,
     FactorResult,
+    GovernmentEntity,
     Indicator,
     IndicatorResult,
     MeasurementRecord,
@@ -48,6 +49,7 @@ def fetch_records_from_db():
                 MeasurementRecord,
                 Service,
                 Section,
+                GovernmentEntity,
             )
             .join(
                 Service,
@@ -59,14 +61,21 @@ def fetch_records_from_db():
                 Service.section_id
                 == Section.section_id,
             )
+            .join(
+                GovernmentEntity,
+                Section.entity_id
+                == GovernmentEntity.entity_id,
+            )
             .order_by(MeasurementRecord.record_id.desc())
         ).all()
 
         output = []
 
-        for record, service, section in rows:
+        for record, service, section, entity in rows:
             row = {
                 "record_id": record.record_id,
+                "entity": entity.entity_name,
+                "entity_id": entity.entity_id,
                 "section": section.section_name,
                 "department": section.section_name,
                 "service": service.service_name,
@@ -569,6 +578,7 @@ def _calculate_overall_csat(factor_results):
 def prepare_uploaded_records(
     dataframe,
     data_mode,
+    entity_column,
     service_column,
     section_column=None,
     fixed_section=None,
@@ -593,6 +603,9 @@ def prepare_uploaded_records(
     """
     تجهيز ملف Excel للحفظ.
 
+    يدعم وجود أكثر من جهة حكومية داخل الملف نفسه؛
+    كل صف يأخذ الجهة من entity_column.
+
     raw:
         يحسب نتيجة مستقلة لكل عامل من العوامل السبعة.
 
@@ -604,6 +617,22 @@ def prepare_uploaded_records(
 
     data = dataframe.copy()
     available_columns = data.columns.tolist()
+
+    # الجهة الحكومية
+    if entity_column not in available_columns:
+        raise ValueError(
+            f"عمود الجهة الحكومية غير موجود في الملف: {entity_column}"
+        )
+
+    data["_entity"] = (
+        data[entity_column]
+        .apply(_clean_text)
+    )
+
+    if (data["_entity"] == "").any():
+        raise ValueError(
+            "يوجد صف بدون اسم جهة حكومية."
+        )
 
     if service_column not in available_columns:
         raise ValueError(
@@ -741,6 +770,7 @@ def prepare_uploaded_records(
 
     grouped_data = data.groupby(
         [
+            "_entity",
             "_section",
             "_service",
             "_year",
@@ -753,6 +783,7 @@ def prepare_uploaded_records(
     prepared_records = []
 
     for (
+        entity,
         section,
         service,
         year,
@@ -860,9 +891,10 @@ def prepare_uploaded_records(
 
         prepared_records.append(
             {
+                "entity": str(entity).strip(),
                 "section": str(section).strip(),
 
-                # مؤقتًا للتوافق مع entry_backend القديم.
+                # مؤقتًا للتوافق مع الصفحات القديمة.
                 "department": str(section).strip(),
 
                 "service": str(service).strip(),
