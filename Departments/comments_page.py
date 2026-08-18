@@ -25,6 +25,7 @@ from pathlib import Path
 
 from database.connection import SessionLocal
 from database.models import (
+    GovernmentEntity,
     MeasurementRecord,
     Section,
     Service,
@@ -353,13 +354,14 @@ def clean_comment(value):
 
 @st.cache_data(ttl=60)
 def fetch_comments_from_db():
-    """Read comments and convert each line into a separate comment."""
+    """Read comments with government entity, section, and service data."""
     with SessionLocal() as session:
         rows = session.execute(
             select(
                 MeasurementRecord.review,
                 MeasurementRecord.year,
                 MeasurementRecord.period,
+                GovernmentEntity.entity_name,
                 Section.section_name,
                 Service.service_name,
             )
@@ -373,12 +375,18 @@ def fetch_comments_from_db():
                 Service.section_id
                 == Section.section_id,
             )
+            .join(
+                GovernmentEntity,
+                Section.entity_id
+                == GovernmentEntity.entity_id,
+            )
             .where(
                 MeasurementRecord.review.is_not(None),
                 MeasurementRecord.review != "",
             )
             .order_by(
                 MeasurementRecord.year.desc(),
+                GovernmentEntity.entity_name,
                 Section.section_name,
                 Service.service_name,
             )
@@ -390,6 +398,7 @@ def fetch_comments_from_db():
         review,
         year,
         period,
+        entity_name,
         section_name,
         service_name,
     ) in rows:
@@ -401,6 +410,7 @@ def fetch_comments_from_db():
 
             comments.append(
                 {
+                    "entity": entity_name,
                     "section": section_name,
                     "service": service_name,
                     "year": int(year),
@@ -466,7 +476,7 @@ BATCH_PROMPT = """
 8. يجب أن يساوي مجموع أعداد أسباب الرضا satisfaction_count.
 9. يجب أن يساوي مجموع أعداد أسباب عدم الرضا dissatisfaction_count.
 10. لا تخترع سببًا غير موجود.
-11. لا تعتبر اسم القسم أو الخدمة سببًا.
+11. لا تعتبر اسم الجهة أو القسم أو الخدمة سببًا.
 12. لا تكرر السبب نفسه بصيغ مختلفة.
 13. لا تكتب خلاصة أو توصية في هذه المرحلة.
 
@@ -490,7 +500,7 @@ FINAL_PROMPT = """
 4. أرجع أعلى 5 أسباب عدم رضا فقط مرتبة تنازليًا.
 5. لا تغيّر satisfaction_count أو dissatisfaction_count أو neutral_count.
 6. لا تخترع سببًا غير موجود.
-7. لا تعتبر اسم القسم أو الخدمة سببًا.
+7. لا تعتبر اسم الجهة أو القسم أو الخدمة سببًا.
 
 ملاحظة:
 مجموع أعلى 5 أسباب لا يلزم أن يساوي إجمالي التعليقات،
@@ -595,7 +605,8 @@ def _analyze_batch(
 ):
     records = "\n".join(
         (
-            f"{index}. القطاع: {item['section']} | "
+            f"{index}. الجهة: {item['entity']} | "
+            f"القطاع: {item['section']} | "
             f"الخدمة: {item['service']} | "
             f"السنة: {item['year']} | "
             f"الفترة: {item['period']} | "
@@ -949,9 +960,9 @@ if not comments_data:
 
 # Prepare and display filters
 
-all_sections = sorted(
+all_entities = sorted(
     {
-        item["section"]
+        item["entity"]
         for item in comments_data
     }
 )
@@ -977,32 +988,59 @@ all_periods = [
 ]
 
 
-filter1, filter2, filter3, filter4 = st.columns(4)
+filter1, filter2, filter3, filter4, filter5 = st.columns(5)
 
 with filter1:
-    selected_section = st.selectbox(
-        "القطاع",
+    selected_entity = st.selectbox(
+        "الجهة الحكومية",
         options=[
-            "كل القطاعات",
-            *all_sections,
+            "كل الجهات",
+            *all_entities,
         ],
     )
 
 
-# Update services based on the selected section
+# Update sections based on the selected government entity
+available_sections = sorted(
+    {
+        item["section"]
+        for item in comments_data
+        if (
+            selected_entity == "كل الجهات"
+            or item["entity"] == selected_entity
+        )
+    }
+)
+
+with filter2:
+    selected_section = st.selectbox(
+        "القطاع",
+        options=[
+            "كل القطاعات",
+            *available_sections,
+        ],
+    )
+
+
+# Update services based on the selected entity and section
 available_services = sorted(
     {
         item["service"]
         for item in comments_data
         if (
-            selected_section == "كل الأقسام"
-            or item["section"] == selected_section
+            (
+                selected_entity == "كل الجهات"
+                or item["entity"] == selected_entity
+            )
+            and (
+                selected_section == "كل القطاعات"
+                or item["section"] == selected_section
+            )
         )
     }
 )
 
-
-with filter2:
+with filter3:
     selected_service = st.selectbox(
         "الخدمة",
         options=[
@@ -1011,7 +1049,7 @@ with filter2:
         ],
     )
 
-with filter3:
+with filter4:
     selected_year = st.selectbox(
         "السنة",
         options=[
@@ -1020,7 +1058,7 @@ with filter3:
         ],
     )
 
-with filter4:
+with filter5:
     selected_period = st.selectbox(
         "الفترة",
         options=[
@@ -1036,6 +1074,10 @@ filtered_data = [
     for item in comments_data
     if (
         (
+            selected_entity == "كل الجهات"
+            or item["entity"] == selected_entity
+        )
+        and (
             selected_section == "كل القطاعات"
             or item["section"] == selected_section
         )
@@ -1079,6 +1121,7 @@ with info_col2:
             use_container_width=True,
             hide_index=True,
             column_config={
+                "entity": "الجهة الحكومية",
                 "section": "القطاع",
                 "service": "الخدمة",
                 "year": "السنة",

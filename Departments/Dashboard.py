@@ -146,10 +146,15 @@ if not mock_records:
 
 
 def _average_ignoring_none(values):
-    numeric_values = [v for v in values if v is not None]
+    """Return the arithmetic mean; formatting to 2 decimals is applied only when displayed."""
+    numeric_values = [
+        number
+        for value in values
+        if (number := _number_or_none(value)) is not None
+    ]
     if not numeric_values:
         return None
-    return round(sum(numeric_values) / len(numeric_values), 2)
+    return sum(numeric_values) / len(numeric_values)
 
 
 def _number_or_none(value):
@@ -161,16 +166,35 @@ def _number_or_none(value):
         return None
 
 
-def _display_table_value(value, kind=None):
+def _format_number(value):
+    """Display values to two decimal places without changing stored/calculated values."""
     number = _number_or_none(value)
     if number is None:
         return "—"
+    return f"{number:.2f}"
+
+
+def _display_table_value(value, kind=None):
+    text = _format_number(value)
+    if text == "—":
+        return text
     if kind == "percent":
-        return f"{number:g}%"
-    return f"{number:g}"
+        return f"{text}%"
+    return text
 
 
-DEFAULT_TARGETS = {"csat": 85, "ces": 69, "nps": 76}
+# Default targets used only when a target is missing from the database.
+DEFAULT_TARGETS = {"csat": 85, "ces": 76, "nps": 69}
+
+# Indicator ranges according to the approved indicator definitions:
+# CSAT: satisfied responses (4 + 5) / total sample => 0 to 100%
+# CES: % easy (4 + 5) - % difficult (1 + 2) => -100 to 100
+# NPS: % promoters (9 + 10) - % detractors (0 to 6) => -100 to 100
+INDICATOR_RANGES = {
+    "csat": (0, 100),
+    "ces": (-100, 100),
+    "nps": (-100, 100),
+}
 
 
 def _target_or_default(code, value):
@@ -183,18 +207,6 @@ st.subheader("عرض حسب")
 all_years = sorted({r["year"] for r in mock_records})
 all_periods = sorted({r["period"] for r in mock_records})
 all_depts = sorted({r["department"] for r in mock_records})
-all_services = sorted({r["service"] for r in mock_records})
-
-
-def _sync_dept_with_services():
-    selected = st.session_state.get("filter_service", [])
-    if not selected:
-        return
-    related_depts = sorted({
-        r["department"] for r in mock_records if r["service"] in selected
-    })
-    if related_depts:
-        st.session_state["filter_dept"] = related_depts
 
 
 def _styled_multiselect(label, options, key, default=None):
@@ -280,9 +292,23 @@ with row2_col1:
     selected_depts = _styled_multiselect(
         "القطاع", all_depts, key="dept", default=all_depts
     )
+
+# If no department is explicitly selected, treat it as "all departments".
+effective_depts = selected_depts if selected_depts else list(all_depts)
+
+# Show only services that belong to the selected department(s).
+available_services = sorted({
+    r["service"]
+    for r in mock_records
+    if r["department"] in effective_depts
+})
+
 with row2_col2:
     selected_services = _styled_multiselect(
-        "الخدمة", all_services, key="service", default=all_services
+        "الخدمة",
+        available_services,
+        key="service",
+        default=available_services,
     )
 
 if not selected_years:
@@ -292,7 +318,7 @@ if not selected_periods:
 if not selected_depts:
     selected_depts = list(all_depts)
 if not selected_services:
-    selected_services = list(all_services)
+    selected_services = list(available_services)
 
 matching_records = [
     r for r in mock_records
@@ -313,13 +339,15 @@ def _combine_records(records):
 
     unique_depts = {r["department"] for r in records}
     unique_services = {r["service"] for r in records}
+    unique_years = {r["year"] for r in records}
+    unique_periods = {r["period"] for r in records}
 
     combined = {
         "section": next(iter(unique_depts)) if len(unique_depts) == 1 else "عدة قطاعات",
         "department": next(iter(unique_depts)) if len(unique_depts) == 1 else "عدة قطاعات",
-        "service": next(iter(unique_services)) if len(unique_services) == 1 else f"متوسط {len(records)} خدمة/سجل",
-        "year": records[0]["year"],
-        "period": records[0]["period"],
+        "service": next(iter(unique_services)) if len(unique_services) == 1 else f"متوسط {len(unique_services)} خدمة",
+        "year": next(iter(unique_years)) if len(unique_years) == 1 else "عدة سنوات",
+        "period": next(iter(unique_periods)) if len(unique_periods) == 1 else "عدة فترات",
         "factors": {},
     }
 
@@ -354,7 +382,11 @@ st.subheader("المؤشرات الرئيسية")
 col_csat, col_ces, col_nps = st.columns(3)
 
 
-def donut_svg(fill_percent, display_text, color, size=140, stroke=14, font_size=20, track_color="#DDE1EA"):
+def donut_svg(fill_percent, value, color, kind, size=140, stroke=14, font_size=20, track_color="#DDE1EA"):
+    # IMPORTANT: the value shown inside the donut is always formatted here
+    # to exactly two decimal places, e.g. 90.518125 -> 90.52.
+    display_text = _display_value(value, kind)
+
     fill_percent = min(max(fill_percent, 0), 100)
     r = (size - stroke) / 2
     c = size / 2
@@ -384,11 +416,10 @@ def _normalize(value, kind):
 
 
 def _display_value(value, kind):
-    number = _number_or_none(value)
-    if number is None:
-        return "—"
-    rounded = int(round(number))
-    return f"{rounded}%" if kind == "percent" else f"{rounded}"
+    text = _format_number(value)
+    if text == "—":
+        return text
+    return f"{text}%" if kind == "percent" else text
 
 
 def kpi_block(col, label, current, prev, target, kind):
@@ -404,21 +435,21 @@ def kpi_block(col, label, current, prev, target, kind):
 
             with c_target:
                 st.markdown(
-                    donut_svg(target_pct, _display_value(target, kind), ROLE_COLORS["target"], size=115, stroke=13, font_size=18),
+                    donut_svg(target_pct, target, ROLE_COLORS["target"], kind, size=115, stroke=13, font_size=18),
                     unsafe_allow_html=True,
                 )
                 st.markdown('<div style="text-align:center; font-size:12px; color:#8A94B5;">المستهدف</div>', unsafe_allow_html=True)
 
             with c_current:
                 st.markdown(
-                    donut_svg(current_pct, _display_value(current, kind), ROLE_COLORS["current"], size=170, stroke=17, font_size=30),
+                    donut_svg(current_pct, current, ROLE_COLORS["current"], kind, size=170, stroke=17, font_size=30),
                     unsafe_allow_html=True,
                 )
                 st.markdown('<div style="text-align:center; font-size:13px; font-weight:700; color:#16213E;">الحالي</div>', unsafe_allow_html=True)
 
             with c_prev:
                 st.markdown(
-                    donut_svg(prev_pct, _display_value(prev, kind), ROLE_COLORS["previous"], size=115, stroke=13, font_size=18),
+                    donut_svg(prev_pct, prev, ROLE_COLORS["previous"], kind, size=115, stroke=13, font_size=18),
                     unsafe_allow_html=True,
                 )
                 st.markdown('<div style="text-align:center; font-size:12px; color:#8A94B5;">السابق</div>', unsafe_allow_html=True)
@@ -426,7 +457,7 @@ def kpi_block(col, label, current, prev, target, kind):
 
 kpi_block(
     col_csat,
-    "CSAT - رضا العميل",
+    "CSAT - رضا العملاء",
     rec.get("csat_current"),
     rec.get("csat_prev"),
     _target_or_default("csat", rec.get("csat_target")),
@@ -444,7 +475,7 @@ kpi_block(
 
 kpi_block(
     col_nps,
-    "NPS - التوصية بالخدمة",
+    "NPS - توصية العملاء",
     rec.get("nps_current"),
     rec.get("nps_prev"),
     _target_or_default("nps", rec.get("nps_target")),
@@ -453,31 +484,81 @@ kpi_block(
 
 col_top5, col_chart = st.columns([0.8, 1.4])
 
+def _top_services_by_csat(records, limit=5):
+    """
+    Aggregate CSAT by (department, service) first, then rank services.
+    This prevents the same service from appearing more than once because
+    it has records from multiple years or periods.
+    """
+    grouped = {}
+
+    for record in records:
+        department = record.get("department")
+        service = record.get("service")
+        key = (department, service)
+
+        if key not in grouped:
+            grouped[key] = []
+
+        value = _number_or_none(record.get("csat_current"))
+        if value is not None:
+            grouped[key].append(value)
+
+    services = []
+    for (department, service), values in grouped.items():
+        csat_value = _average_ignoring_none(values)
+        if csat_value is None:
+            continue
+
+        services.append({
+            "department": department,
+            "service": service,
+            "csat_current": csat_value,
+        })
+
+    services.sort(
+        key=lambda item: item["csat_current"],
+        reverse=True,
+    )
+    return services[:limit]
+
+
 with col_top5:
     with st.container(border=True):
-        top_services = sorted(
-            matching_records,
-            key=lambda r: (
-                _number_or_none(r.get("csat_current"))
-                if _number_or_none(r.get("csat_current")) is not None
-                else float("-inf")
-            ),
-            reverse=True,
-        )[:5]
+        top_services = _top_services_by_csat(matching_records)
 
         if not top_services:
             st.markdown('<div class="card-title">أفضل 5 خدمات حسب CSAT</div>', unsafe_allow_html=True)
             st.info("لا توجد بيانات كافية لهذا الاختيار")
         else:
-            rows = "".join(
-                (
+            # If the same service name exists under more than one department,
+            # show the department too so the two services are distinguishable.
+            service_name_counts = {}
+            for item in top_services:
+                service_name_counts[item["service"]] = (
+                    service_name_counts.get(item["service"], 0) + 1
+                )
+
+            rows = ""
+            for i, item in enumerate(top_services):
+                service_label = item["service"]
+
+                if service_name_counts[item["service"]] > 1:
+                    service_label = (
+                        f'{item["service"]}'
+                        f'<div style="font-size:11px; color:#8A94B5; font-weight:600;">'
+                        f'{item["department"]}</div>'
+                    )
+
+                rows += (
                     '<div class="row">'
-                    f'<span>{i + 1}. {r["service"]}</span>'
-                    f'<span class="count-square positive">{_display_table_value(r.get("csat_current"), "percent")}</span>'
+                    f'<span>{i + 1}. {service_label}</span>'
+                    f'<span class="count-square positive">'
+                    f'{_display_table_value(item.get("csat_current"), "percent")}'
+                    f'</span>'
                     '</div>'
                 )
-                for i, r in enumerate(top_services)
-            )
+
             st.markdown(
                 f'<div style="padding: 6px 6px 0 6px;">'
                 f'<div class="card-title">أفضل 5 خدمات حسب CSAT</div>'
@@ -494,9 +575,27 @@ with col_chart:
         )
 
         indicator_specs = [
-            ("CSAT", rec.get("csat_prev"), rec.get("csat_current"), _target_or_default("csat", rec.get("csat_target")), [0, 100]),
-            ("CES", rec.get("ces_prev"), rec.get("ces_current"), _target_or_default("ces", rec.get("ces_target")), [-100, 100]),
-            ("NPS", rec.get("nps_prev"), rec.get("nps_current"), _target_or_default("nps", rec.get("nps_target")), [-100, 100]),
+            (
+                "CSAT",
+                rec.get("csat_prev"),
+                rec.get("csat_current"),
+                _target_or_default("csat", rec.get("csat_target")),
+                list(INDICATOR_RANGES["csat"]),
+            ),
+            (
+                "CES",
+                rec.get("ces_prev"),
+                rec.get("ces_current"),
+                _target_or_default("ces", rec.get("ces_target")),
+                list(INDICATOR_RANGES["ces"]),
+            ),
+            (
+                "NPS",
+                rec.get("nps_prev"),
+                rec.get("nps_current"),
+                _target_or_default("nps", rec.get("nps_target")),
+                list(INDICATOR_RANGES["nps"]),
+            ),
         ]
 
         categories = ["السابق", "الحالي", "المستهدف"]
@@ -526,6 +625,7 @@ with col_chart:
                     y=values,
                     marker_color=role_order,
                     marker_cornerradius=6,
+                    hovertemplate="%{x}<br>%{y}<extra></extra>",
                 )
                 mini_fig.update_layout(
                     plot_bgcolor="rgba(0,0,0,0)",
@@ -589,7 +689,11 @@ with st.container(border=True):
         ]
 
         text_labels = [
-            f"{v:g}%" if v is not None else "—"
+            (
+                f"{_format_number(v)}%"
+                if v is not None
+                else "—"
+            )
             for v in display_values
         ]
 
@@ -604,7 +708,7 @@ with st.container(border=True):
             textposition="inside",
             insidetextanchor="end",
             textfont=dict(color="white", size=13),
-            hovertemplate="%{y}<br>%{x:.2f}%<extra></extra>",
+            hovertemplate="%{y}<br>%{x}%<extra></extra>",
         )
         factor_fig.update_layout(
             plot_bgcolor="rgba(0,0,0,0)",
