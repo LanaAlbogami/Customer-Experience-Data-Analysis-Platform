@@ -377,7 +377,7 @@ def fetch_comments_from_db():
             )
             .join(
                 GovernmentEntity,
-                Section.entity_id
+                MeasurementRecord.entity_id
                 == GovernmentEntity.entity_id,
             )
             .where(

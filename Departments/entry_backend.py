@@ -171,32 +171,20 @@ def _get_or_create_entity(
     return entity
 
 
-# Return section names. When an entity is supplied, only its sections are returned.
+# Return shared section names. Sections are not owned by entities.
 def get_sections(
     entity_name: str | None = None,
 ) -> list[str]:
+    """
+    Return all shared section names.
+
+    entity_name is kept only for compatibility with existing pages.
+    Sections are global/shared and are NOT filtered by entity.
+    """
     with SessionLocal() as session:
-        statement = (
+        sections = session.scalars(
             select(Section)
             .order_by(Section.section_name)
-        )
-
-        if entity_name:
-            statement = (
-                statement
-                .join(
-                    GovernmentEntity,
-                    Section.entity_id
-                    == GovernmentEntity.entity_id,
-                )
-                .where(
-                    GovernmentEntity.entity_name
-                    == str(entity_name).strip()
-                )
-            )
-
-        sections = session.scalars(
-            statement
         ).all()
 
         return [
@@ -220,49 +208,27 @@ def _get_section_by_name(
     section_name: str,
     entity_name: str | None = None,
 ) -> Section | None:
+    """
+    Fetch a shared section by name.
+
+    entity_name is ignored and kept only for compatibility.
+    """
     section_name = str(section_name).strip()
 
     if not section_name:
         return None
 
-    statement = (
+    return session.scalar(
         select(Section)
         .where(
             Section.section_name == section_name
         )
     )
 
-    if entity_name:
-        statement = (
-            statement
-            .join(
-                GovernmentEntity,
-                Section.entity_id
-                == GovernmentEntity.entity_id,
-            )
-            .where(
-                GovernmentEntity.entity_name
-                == str(entity_name).strip()
-            )
-        )
 
-    matches = list(
-        session.scalars(statement).all()
-    )
-
-    if len(matches) > 1:
-        raise ValueError(
-            f"يوجد أكثر من قسم باسم {section_name}. "
-            "حددي الجهة الحكومية أولًا."
-        )
-
-    return matches[0] if matches else None
-
-
-# Fetch the section, or create it under the selected entity during upload.
+# Fetch the shared section, or create it during upload.
 def _get_or_create_section(
     session,
-    entity: GovernmentEntity,
     section_name: str,
 ) -> Section:
     section_name = str(section_name).strip()
@@ -273,14 +239,12 @@ def _get_or_create_section(
     section = session.scalar(
         select(Section)
         .where(
-            Section.entity_id == entity.entity_id,
-            Section.section_name == section_name,
+            Section.section_name == section_name
         )
     )
 
     if section is None:
         section = Section(
-            entity_id=entity.entity_id,
             section_name=section_name,
         )
         session.add(section)
@@ -294,11 +258,15 @@ def get_services(
     section_name: str,
     entity_name: str | None = None,
 ) -> list[str]:
+    """
+    Return services for a shared section.
+
+    entity_name is kept only for compatibility with existing pages.
+    """
     with SessionLocal() as session:
         section = _get_section_by_name(
             session,
             section_name,
-            entity_name=entity_name,
         )
 
         if section is None:
@@ -324,10 +292,18 @@ def _get_service(
     service_name: str,
     entity_name: str | None = None,
 ) -> Service | None:
+    """
+    Fetch a service by shared section + service name.
+
+    entity_name is ignored and kept only for compatibility.
+    """
     section_name = str(section_name).strip()
     service_name = str(service_name).strip()
 
-    statement = (
+    if not section_name or not service_name:
+        return None
+
+    return session.scalar(
         select(Service)
         .join(
             Section,
@@ -339,34 +315,8 @@ def _get_service(
         )
     )
 
-    if entity_name:
-        statement = (
-            statement
-            .join(
-                GovernmentEntity,
-                Section.entity_id
-                == GovernmentEntity.entity_id,
-            )
-            .where(
-                GovernmentEntity.entity_name
-                == str(entity_name).strip()
-            )
-        )
 
-    matches = list(
-        session.scalars(statement).all()
-    )
-
-    if len(matches) > 1:
-        raise ValueError(
-            f"الخدمة {service_name} موجودة تحت أكثر من جهة. "
-            "حددي الجهة الحكومية أولًا."
-        )
-
-    return matches[0] if matches else None
-
-
-# Fetch the service within the section, or create it on upload.
+# Fetch the service within the shared section, or create it on upload.
 def _get_or_create_service(
     session,
     section: Section,
@@ -501,6 +451,7 @@ def default_target(code: str) -> float | None:
 
 def _find_measurement_record(
     session,
+    entity_id: int,
     service_id: int,
     year: int,
     period: str,
@@ -508,6 +459,7 @@ def _find_measurement_record(
     return session.scalar(
         select(MeasurementRecord)
         .where(
+            MeasurementRecord.entity_id == entity_id,
             MeasurementRecord.service_id == service_id,
             MeasurementRecord.year == year,
             MeasurementRecord.period == period,
@@ -517,6 +469,7 @@ def _find_measurement_record(
 
 def _find_previous_record(
     session,
+    entity_id: int,
     service_id: int,
     year: int,
     period: str,
@@ -528,6 +481,7 @@ def _find_previous_record(
 
     return _find_measurement_record(
         session,
+        entity_id,
         service_id,
         previous_year,
         previous_code,
@@ -537,12 +491,14 @@ def _find_previous_record(
 # Return the current indicator values from the previous period.
 def _previous_indicator_values(
     session,
+    entity_id: int,
     service_id: int,
     year: int,
     period: str,
 ) -> dict[str, Decimal]:
     previous_record = _find_previous_record(
         session,
+        entity_id,
         service_id,
         year,
         period,
@@ -576,12 +532,14 @@ def _previous_indicator_values(
 # Return the factor results from the previous period.
 def _previous_factor_values(
     session,
+    entity_id: int,
     service_id: int,
     year: int,
     period: str,
 ) -> dict[str, Decimal]:
     previous_record = _find_previous_record(
         session,
+        entity_id,
         service_id,
         year,
         period,
@@ -620,12 +578,22 @@ def get_previous_values(
     period: str,
     entity: str | None = None,
 ) -> dict[str, float]:
+    if not entity:
+        return {}
+
     with SessionLocal() as session:
+        entity_row = _get_entity_by_name(
+            session,
+            entity,
+        )
+
+        if entity_row is None:
+            return {}
+
         service_row = _get_service(
             session,
             section,
             service,
-            entity_name=entity,
         )
 
         if service_row is None:
@@ -633,6 +601,7 @@ def get_previous_values(
 
         values = _previous_indicator_values(
             session,
+            entity_row.entity_id,
             service_row.service_id,
             year,
             period,
@@ -654,12 +623,22 @@ def entry_exists(
     period: str,
     entity: str | None = None,
 ) -> bool:
+    if not entity:
+        return False
+
     with SessionLocal() as session:
+        entity_row = _get_entity_by_name(
+            session,
+            entity,
+        )
+
+        if entity_row is None:
+            return False
+
         service_row = _get_service(
             session,
             section,
             service,
-            entity_name=entity,
         )
 
         if service_row is None:
@@ -667,6 +646,7 @@ def entry_exists(
 
         record = _find_measurement_record(
             session,
+            entity_row.entity_id,
             service_row.service_id,
             year,
             period,
@@ -733,11 +713,7 @@ def save_entry(
     entity: str | None = None,
 ) -> dict[str, Any]:
     """
-    Save the manual entry for the indicators shown on the page.
-
-    CSAT can be entered here as a pre-computed average, whereas the Excel
-    upload keeps calculating CSAT from the factor results.
-    TargetValue is optional.
+    Save a manual entry for one entity + service + period.
     """
     errors = validate_entry(
         section,
@@ -748,6 +724,9 @@ def save_entry(
         entity=entity,
     )
 
+    if not entity:
+        errors.append("الجهة الحكومية مطلوبة.")
+
     if errors:
         return {
             "ok": False,
@@ -757,11 +736,20 @@ def save_entry(
 
     with SessionLocal() as session:
         try:
+            entity_row = _get_entity_by_name(
+                session,
+                entity,
+            )
+
+            if entity_row is None:
+                raise ValueError(
+                    f"الجهة الحكومية غير موجودة: {entity}"
+                )
+
             service_row = _get_service(
                 session,
                 section,
                 service,
-                entity_name=entity,
             )
 
             if service_row is None:
@@ -777,12 +765,14 @@ def save_entry(
 
             previous_values = _previous_indicator_values(
                 session,
+                entity_row.entity_id,
                 service_row.service_id,
                 year,
                 period,
             )
 
             record = MeasurementRecord(
+                entity_id=entity_row.entity_id,
                 service_id=service_row.service_id,
                 year=int(year),
                 period=period,
@@ -856,6 +846,8 @@ def save_entry(
                 "saved_count": 0,
             }
 
+
+# Excel file uploads
 
 
 # Excel file uploads
@@ -1157,7 +1149,6 @@ def save_uploaded_records(
 
                 section = _get_or_create_section(
                     session,
-                    entity,
                     section_name,
                 )
 
@@ -1169,6 +1160,7 @@ def save_uploaded_records(
 
                 previous_indicators = _previous_indicator_values(
                     session,
+                    entity.entity_id,
                     service.service_id,
                     year,
                     period,
@@ -1176,6 +1168,7 @@ def save_uploaded_records(
 
                 previous_factors = _previous_factor_values(
                     session,
+                    entity.entity_id,
                     service.service_id,
                     year,
                     period,
@@ -1183,6 +1176,7 @@ def save_uploaded_records(
 
                 record = _find_measurement_record(
                     session,
+                    entity.entity_id,
                     service.service_id,
                     year,
                     period,
@@ -1190,6 +1184,7 @@ def save_uploaded_records(
 
                 if record is None:
                     record = MeasurementRecord(
+                        entity_id=entity.entity_id,
                         service_id=service.service_id,
                         year=year,
                         period=period,
@@ -1437,18 +1432,19 @@ def get_all_records() -> list[dict[str, Any]]:
                 IndicatorResult,
             )
             .join(
-                Section,
-                Section.entity_id
+                MeasurementRecord,
+                MeasurementRecord.entity_id
                 == GovernmentEntity.entity_id,
             )
             .join(
                 Service,
-                Service.section_id == Section.section_id,
-            )
-            .join(
-                MeasurementRecord,
                 MeasurementRecord.service_id
                 == Service.service_id,
+            )
+            .join(
+                Section,
+                Service.section_id
+                == Section.section_id,
             )
             .join(
                 IndicatorResult,

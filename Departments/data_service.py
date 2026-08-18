@@ -62,7 +62,7 @@ def fetch_records_from_db():
             )
             .join(
                 GovernmentEntity,
-                Section.entity_id
+                MeasurementRecord.entity_id
                 == GovernmentEntity.entity_id,
             )
             .order_by(

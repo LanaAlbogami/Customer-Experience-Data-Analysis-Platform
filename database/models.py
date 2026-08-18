@@ -16,7 +16,6 @@ from sqlalchemy.orm import (
     relationship,
 )
 
-# Base class that all models inherit from (defined in connection.py)
 from database.connection import Base
 
 
@@ -24,12 +23,11 @@ from database.connection import Base
 # Government Entities
 # ==================================================
 
-# Government entities are the highest level in the hierarchy.
-# One government entity can contain multiple sections.
+# Government entities are independent from sections.
+# The same shared sections/services can be measured for many entities.
 class GovernmentEntity(Base):
     __tablename__ = "GovernmentEntities"
 
-    # Unique ID for each government entity
     entity_id: Mapped[int] = mapped_column(
         "EntityID",
         Integer,
@@ -37,7 +35,6 @@ class GovernmentEntity(Base):
         autoincrement=True,
     )
 
-    # Government entity name must be unique
     entity_name: Mapped[str] = mapped_column(
         "EntityName",
         String(150),
@@ -45,8 +42,10 @@ class GovernmentEntity(Base):
         unique=True,
     )
 
-    # One entity can have many sections
-    sections: Mapped[list["Section"]] = relationship(
+    # One entity can have many measurement records.
+    measurement_records: Mapped[
+        list["MeasurementRecord"]
+    ] = relationship(
         back_populates="entity",
     )
 
@@ -55,24 +54,18 @@ class GovernmentEntity(Base):
 # Sections
 # ==================================================
 
-# Sections belong to a government entity
-# and group services together.
+# Sections are shared reference data.
+# Example:
+#   1 -> Deem
+#   2 -> DT
+#   3 -> IDART
+#   4 -> NB
+#   5 -> NP
+#
+# A section is NOT duplicated for every government entity.
 class Section(Base):
     __tablename__ = "Section"
 
-    # The same section name cannot be repeated
-    # within the same government entity.
-    # However, two different entities may have
-    # sections with the same name.
-    __table_args__ = (
-        UniqueConstraint(
-            "EntityID",
-            "SectionName",
-            name="uq_section_entity_name",
-        ),
-    )
-
-    # Unique ID for each section
     section_id: Mapped[int] = mapped_column(
         "SectionID",
         Integer,
@@ -80,28 +73,19 @@ class Section(Base):
         autoincrement=True,
     )
 
-    # Links this section to its government entity
-    entity_id: Mapped[int] = mapped_column(
-        "EntityID",
-        Integer,
-        ForeignKey("GovernmentEntities.EntityID"),
-        nullable=False,
-    )
-
-    # Section name
+    # Since the section is shared globally,
+    # its name must be unique in the Section table.
     section_name: Mapped[str] = mapped_column(
         "SectionName",
         String(100),
         nullable=False,
+        unique=True,
     )
 
-    # The government entity this section belongs to
-    entity: Mapped["GovernmentEntity"] = relationship(
-        back_populates="sections",
-    )
-
-    # One section has many services
-    services: Mapped[list["Service"]] = relationship(
+    # One shared section has many services.
+    services: Mapped[
+        list["Service"]
+    ] = relationship(
         back_populates="section",
     )
 
@@ -110,11 +94,10 @@ class Section(Base):
 # Services
 # ==================================================
 
-# Each service belongs to exactly one section
+# Each service belongs to one shared section.
 class Service(Base):
     __tablename__ = "Service"
 
-    # Prevent duplicate service names within the same section
     __table_args__ = (
         UniqueConstraint(
             "SectionID",
@@ -123,7 +106,6 @@ class Service(Base):
         ),
     )
 
-    # Unique ID for each service
     service_id: Mapped[int] = mapped_column(
         "ServiceID",
         Integer,
@@ -131,7 +113,6 @@ class Service(Base):
         autoincrement=True,
     )
 
-    # Links this service to its parent section
     section_id: Mapped[int] = mapped_column(
         "SectionID",
         Integer,
@@ -139,19 +120,18 @@ class Service(Base):
         nullable=False,
     )
 
-    # Service name
     service_name: Mapped[str] = mapped_column(
         "ServiceName",
         String(150),
         nullable=False,
     )
 
-    # The section this service belongs to
-    section: Mapped["Section"] = relationship(
+    section: Mapped[
+        "Section"
+    ] = relationship(
         back_populates="services",
     )
 
-    # One service can have many measurement records over time
     measurement_records: Mapped[
         list["MeasurementRecord"]
     ] = relationship(
@@ -163,22 +143,24 @@ class Service(Base):
 # Measurement Records
 # ==================================================
 
-# One record = one service measured in a specific year and period
+# One record = one government entity + one service
+# measured in one specific year and period.
+#
+# EntityID belongs HERE rather than inside Section,
+# because sections/services are shared across entities.
 class MeasurementRecord(Base):
     __tablename__ = "MeasurementRecords"
 
-    # A service can only have one record
-    # per year + period combination
     __table_args__ = (
         UniqueConstraint(
+            "EntityID",
             "ServiceID",
             "Year",
             "Period",
-            name="uq_measurement_service_year_period",
+            name="uq_measurement_entity_service_year_period",
         ),
     )
 
-    # Unique ID for each measurement record
     record_id: Mapped[int] = mapped_column(
         "RecordID",
         Integer,
@@ -186,7 +168,15 @@ class MeasurementRecord(Base):
         autoincrement=True,
     )
 
-    # Which service this record measures
+    # Which government entity this measurement belongs to.
+    entity_id: Mapped[int] = mapped_column(
+        "EntityID",
+        Integer,
+        ForeignKey("GovernmentEntities.EntityID"),
+        nullable=False,
+    )
+
+    # Which shared service this record measures.
     service_id: Mapped[int] = mapped_column(
         "ServiceID",
         Integer,
@@ -194,22 +184,18 @@ class MeasurementRecord(Base):
         nullable=False,
     )
 
-    # The year the measurement was taken
     year: Mapped[int] = mapped_column(
         "Year",
         Integer,
         nullable=False,
     )
 
-    # The period within the year
-    # e.g. H1 / H2
     period: Mapped[str] = mapped_column(
         "Period",
         String(20),
         nullable=False,
     )
 
-    # How many people took part in this measurement
     participants_count: Mapped[int] = mapped_column(
         "ParticipantsCount",
         Integer,
@@ -218,20 +204,26 @@ class MeasurementRecord(Base):
         server_default=text("0"),
     )
 
-    # Optional free-text review/comment
-    review: Mapped[str | None] = mapped_column(
+    review: Mapped[
+        str | None
+    ] = mapped_column(
         "Review",
         Text,
         nullable=True,
     )
 
-    # The service this record belongs to
-    service: Mapped["Service"] = relationship(
+    entity: Mapped[
+        "GovernmentEntity"
+    ] = relationship(
         back_populates="measurement_records",
     )
 
-    # Indicator results tied to this record
-    # Deleting the record also deletes its indicator results
+    service: Mapped[
+        "Service"
+    ] = relationship(
+        back_populates="measurement_records",
+    )
+
     indicator_results: Mapped[
         list["IndicatorResult"]
     ] = relationship(
@@ -239,8 +231,6 @@ class MeasurementRecord(Base):
         cascade="all, delete-orphan",
     )
 
-    # Factor results tied to this record
-    # Deleting the record also deletes its factor results
     factor_results: Mapped[
         list["FactorResult"]
     ] = relationship(
@@ -253,19 +243,9 @@ class MeasurementRecord(Base):
 # Indicators
 # ==================================================
 
-# Indicators being tracked, such as CSAT, CES, NPS, BPS
-#
-# IsFactorBased = True
-#   -> current value is calculated from the underlying
-#      factor results (e.g. CSAT)
-#
-# IsFactorBased = False
-#   -> value stands on its own / is entered directly
-#      (e.g. CES, NPS, BPS)
 class Indicator(Base):
     __tablename__ = "Indicators"
 
-    # Unique ID for each indicator
     indicator_id: Mapped[int] = mapped_column(
         "IndicatorID",
         Integer,
@@ -273,7 +253,6 @@ class Indicator(Base):
         autoincrement=True,
     )
 
-    # Indicator name must be unique
     indicator_name: Mapped[str] = mapped_column(
         "IndicatorName",
         String(100),
@@ -281,30 +260,24 @@ class Indicator(Base):
         unique=True,
     )
 
-    # Unit used by the indicator
-    # e.g. %, points
     unit: Mapped[str] = mapped_column(
         "Unit",
         String(30),
         nullable=False,
     )
 
-    # Lowest possible value
     min_value: Mapped[Decimal] = mapped_column(
         "MinValue",
         Numeric(10, 2),
         nullable=False,
     )
 
-    # Highest possible value
     max_value: Mapped[Decimal] = mapped_column(
         "MaxValue",
         Numeric(10, 2),
         nullable=False,
     )
 
-    # True  = calculated from factor results
-    # False = entered/calculated independently
     is_factor_based: Mapped[bool] = mapped_column(
         "IsFactorBased",
         Boolean,
@@ -313,7 +286,6 @@ class Indicator(Base):
         server_default=text("0"),
     )
 
-    # All results recorded for this indicator
     results: Mapped[
         list["IndicatorResult"]
     ] = relationship(
@@ -325,12 +297,9 @@ class Indicator(Base):
 # Indicator Results
 # ==================================================
 
-# Stores previous, current, and target values
-# for each indicator within each measurement record
 class IndicatorResult(Base):
     __tablename__ = "IndicatorResults"
 
-    # Each indicator can only appear once per record
     __table_args__ = (
         UniqueConstraint(
             "RecordID",
@@ -339,7 +308,6 @@ class IndicatorResult(Base):
         ),
     )
 
-    # Unique ID for each indicator result
     result_id: Mapped[int] = mapped_column(
         "ResultID",
         Integer,
@@ -347,7 +315,6 @@ class IndicatorResult(Base):
         autoincrement=True,
     )
 
-    # Which measurement record this result belongs to
     record_id: Mapped[int] = mapped_column(
         "RecordID",
         Integer,
@@ -355,7 +322,6 @@ class IndicatorResult(Base):
         nullable=False,
     )
 
-    # Which indicator this result represents
     indicator_id: Mapped[int] = mapped_column(
         "IndicatorID",
         Integer,
@@ -363,34 +329,37 @@ class IndicatorResult(Base):
         nullable=False,
     )
 
-    # Value from the previous period
-    prev_value: Mapped[Decimal | None] = mapped_column(
+    prev_value: Mapped[
+        Decimal | None
+    ] = mapped_column(
         "PrevValue",
         Numeric(10, 2),
         nullable=True,
     )
 
-    # Value measured in the current period
     current_value: Mapped[Decimal] = mapped_column(
         "CurrentValue",
         Numeric(10, 2),
         nullable=False,
     )
 
-    # Target value
-    target_value: Mapped[Decimal | None] = mapped_column(
+    target_value: Mapped[
+        Decimal | None
+    ] = mapped_column(
         "TargetValue",
         Numeric(10, 2),
         nullable=True,
     )
 
-    # The measurement record this result belongs to
-    record: Mapped["MeasurementRecord"] = relationship(
+    record: Mapped[
+        "MeasurementRecord"
+    ] = relationship(
         back_populates="indicator_results",
     )
 
-    # The indicator this result belongs to
-    indicator: Mapped["Indicator"] = relationship(
+    indicator: Mapped[
+        "Indicator"
+    ] = relationship(
         back_populates="results",
     )
 
@@ -399,12 +368,9 @@ class IndicatorResult(Base):
 # Factors
 # ==================================================
 
-# The fixed CSAT factors.
-# The actual factor names are inserted by seed_data.py.
 class Factor(Base):
     __tablename__ = "Factors"
 
-    # Unique ID for each factor
     factor_id: Mapped[int] = mapped_column(
         "FactorID",
         Integer,
@@ -412,7 +378,6 @@ class Factor(Base):
         autoincrement=True,
     )
 
-    # Factor name must be unique
     factor_name: Mapped[str] = mapped_column(
         "FactorName",
         String(150),
@@ -420,7 +385,6 @@ class Factor(Base):
         unique=True,
     )
 
-    # Controls the order in which factors are displayed
     display_order: Mapped[int] = mapped_column(
         "DisplayOrder",
         Integer,
@@ -428,7 +392,6 @@ class Factor(Base):
         unique=True,
     )
 
-    # All results recorded for this factor
     results: Mapped[
         list["FactorResult"]
     ] = relationship(
@@ -440,12 +403,9 @@ class Factor(Base):
 # Factor Results
 # ==================================================
 
-# Stores the result of each factor
-# for each measurement record
 class FactorResult(Base):
     __tablename__ = "FactorResults"
 
-    # Each factor can only appear once per record
     __table_args__ = (
         UniqueConstraint(
             "RecordID",
@@ -454,7 +414,6 @@ class FactorResult(Base):
         ),
     )
 
-    # Unique ID for each factor result
     factor_result_id: Mapped[int] = mapped_column(
         "FactorResultID",
         Integer,
@@ -462,7 +421,6 @@ class FactorResult(Base):
         autoincrement=True,
     )
 
-    # Which measurement record this result belongs to
     record_id: Mapped[int] = mapped_column(
         "RecordID",
         Integer,
@@ -470,7 +428,6 @@ class FactorResult(Base):
         nullable=False,
     )
 
-    # Which factor this result is for
     factor_id: Mapped[int] = mapped_column(
         "FactorID",
         Integer,
@@ -478,41 +435,44 @@ class FactorResult(Base):
         nullable=False,
     )
 
-    # Number of valid responses used
-    # to calculate this factor's score
-    participants_count: Mapped[int | None] = mapped_column(
+    participants_count: Mapped[
+        int | None
+    ] = mapped_column(
         "ParticipantsCount",
         Integer,
         nullable=True,
     )
 
-    # Value from the previous period
-    prev_value: Mapped[Decimal | None] = mapped_column(
+    prev_value: Mapped[
+        Decimal | None
+    ] = mapped_column(
         "PrevValue",
         Numeric(10, 2),
         nullable=True,
     )
 
-    # Value measured in the current period
     current_value: Mapped[Decimal] = mapped_column(
         "CurrentValue",
         Numeric(10, 2),
         nullable=False,
     )
 
-    # Target value
-    target_value: Mapped[Decimal | None] = mapped_column(
+    target_value: Mapped[
+        Decimal | None
+    ] = mapped_column(
         "TargetValue",
         Numeric(10, 2),
         nullable=True,
     )
 
-    # The measurement record this result belongs to
-    record: Mapped["MeasurementRecord"] = relationship(
+    record: Mapped[
+        "MeasurementRecord"
+    ] = relationship(
         back_populates="factor_results",
     )
 
-    # The factor this result belongs to
-    factor: Mapped["Factor"] = relationship(
+    factor: Mapped[
+        "Factor"
+    ] = relationship(
         back_populates="results",
     )
