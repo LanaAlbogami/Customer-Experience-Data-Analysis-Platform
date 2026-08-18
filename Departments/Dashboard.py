@@ -362,10 +362,14 @@ def _combine_records(records):
         for name in r.get("factors", {})
     }
     for factor_name in all_factor_names:
+        # نستبعد أي سجل عدد المشاركين فيه لهذا العامل صفر أو فاضي —
+        # هذا معناه "ما فيه بيانات فعلية"، مو تقييم حقيقي بصفر، وإدخاله
+        # بالمتوسط كان يسحب الرقم شوي عن قيمته الحقيقية.
         values = [
             r["factors"][factor_name]["current_value"]
             for r in records
             if factor_name in r.get("factors", {})
+            and r["factors"][factor_name].get("participants_count")
         ]
         combined["factors"][factor_name] = {
             "current_value": _average_ignoring_none(values),

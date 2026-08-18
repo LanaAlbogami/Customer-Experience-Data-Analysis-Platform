@@ -180,6 +180,13 @@ entity_factor_values = defaultdict(lambda: defaultdict(list))
 for r in records:
     entity_name = r["entity"]
     for factor_name, factor_data in r.get("factors", {}).items():
+        # نتجاهل العامل لو عدد المشاركين فيه صفر أو فاضي — هذا معناه
+        # "ما فيه بيانات فعلية"، مو تقييم حقيقي بصفر، وإدخاله بالمتوسط
+        # كان يسحب الرقم تحت شوي بدون سبب حقيقي.
+        participants = factor_data.get("participants_count")
+        if not participants:
+            continue
+
         value = _num(factor_data.get("current_value"))
         if value is not None:
             entity_factor_values[entity_name][factor_name].append(value)
@@ -202,11 +209,34 @@ sorted_entities = sorted(
 
 # ==================================================
 # Summary cards
+#
+# ملاحظة مهمة: "متوسط CSAT العام" يُحسب من كل البيانات مباشرة بنفس
+# منهجية العوامل السبعة، مو كمتوسط لأرقام الجهات بعد حسابها — لأن
+# متوسط متوسطات الجهات يوزن كل جهة بنفس الوزن بغض النظر عن حجمها،
+# وهذا يعطي رقم مختلف شوي عن الرقم الإجمالي الحقيقي.
 # ==================================================
 
+overall_factor_values = defaultdict(list)
+
+for r in records:
+    for factor_name, factor_data in r.get("factors", {}).items():
+        participants = factor_data.get("participants_count")
+        if not participants:
+            continue
+
+        value = _num(factor_data.get("current_value"))
+        if value is not None:
+            overall_factor_values[factor_name].append(value)
+
+overall_factor_averages = [
+    sum(values) / len(values)
+    for values in overall_factor_values.values()
+    if values
+]
+
 overall_csat = (
-    round(sum(entity_avg.values()) / len(entity_avg), 1)
-    if entity_avg
+    round(sum(overall_factor_averages) / len(overall_factor_averages), 1)
+    if overall_factor_averages
     else None
 )
 best_entity = sorted_entities[0] if sorted_entities else None
