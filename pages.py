@@ -436,6 +436,11 @@ def _departments_pages():
             title="التعديل",
             icon=":material/edit:",
         ),
+        st.Page(
+            "Departments/entities_analysis_page.py",
+            title="الجهات",
+            icon=":material/apartment:",
+        ),
     ]
 
 

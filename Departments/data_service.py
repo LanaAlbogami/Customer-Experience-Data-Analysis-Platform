@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 import pandas as pd
+import streamlit as st
 from sqlalchemy import select
 
 from calculations import (
@@ -32,15 +33,18 @@ def _decimal_to_float(value):
     return None if value is None else float(value)
 
 
+@st.cache_data(ttl=300, show_spinner="جاري تحميل البيانات...")
 def fetch_records_from_db():
     """
     يرجع سجلات القياس مع نتائج المؤشرات والعوامل.
 
-    السجلات مرتبة من الأحدث للأقدم (حسب RecordID)، عشان
-    الداشبورد يقدر ياخذ "آخر N سجل" مباشرة من أول القائمة.
-
     تم إبقاء department مؤقتًا للتوافق مع الصفحات القديمة،
     لكنه يحمل نفس قيمة section.
+
+    ملاحظة أداء: نجيب كل نتائج المؤشرات وكل نتائج العوامل بـ
+    استعلامين إجماليين بس (بدل استعلام منفصل لكل سجل قياس)،
+    ونربطهم ببعض بلغة بايثون — نفس المخرجات بالضبط، بس أسرع
+    بكثير لما يكبر عدد السجلات.
     """
 
     with SessionLocal() as session:
@@ -69,13 +73,40 @@ def fetch_records_from_db():
             .order_by(MeasurementRecord.record_id.desc())
         ).all()
 
+        # استعلام واحد يجيب كل نتائج المؤشرات لكل السجلات دفعة وحدة
+        indicator_results_by_record = {}
+        for result, indicator in session.execute(
+            select(IndicatorResult, Indicator).join(
+                Indicator,
+                IndicatorResult.indicator_id
+                == Indicator.indicator_id,
+            )
+        ).all():
+            indicator_results_by_record.setdefault(
+                result.record_id, []
+            ).append((result, indicator))
+
+        # استعلام واحد يجيب كل نتائج العوامل لكل السجلات دفعة وحدة،
+        # مرتبة حسب display_order عشان الترتيب يبقى صحيح داخل كل سجل
+        factor_results_by_record = {}
+        for result, factor in session.execute(
+            select(FactorResult, Factor)
+            .join(
+                Factor,
+                FactorResult.factor_id == Factor.factor_id,
+            )
+            .order_by(Factor.display_order)
+        ).all():
+            factor_results_by_record.setdefault(
+                result.record_id, []
+            ).append((result, factor))
+
         output = []
 
         for record, service, section, entity in rows:
             row = {
                 "record_id": record.record_id,
                 "entity": entity.entity_name,
-                "entity_id": entity.entity_id,
                 "section": section.section_name,
                 "department": section.section_name,
                 "service": service.service_name,
@@ -87,23 +118,9 @@ def fetch_records_from_db():
                 "factors": {},
             }
 
-            indicator_rows = session.execute(
-                select(
-                    IndicatorResult,
-                    Indicator,
-                )
-                .join(
-                    Indicator,
-                    IndicatorResult.indicator_id
-                    == Indicator.indicator_id,
-                )
-                .where(
-                    IndicatorResult.record_id
-                    == record.record_id
-                )
-            ).all()
-
-            for result, indicator in indicator_rows:
+            for result, indicator in indicator_results_by_record.get(
+                record.record_id, []
+            ):
                 code = indicator.indicator_name.lower()
 
                 row[f"{code}_prev"] = _decimal_to_float(
@@ -116,24 +133,9 @@ def fetch_records_from_db():
                     result.target_value
                 )
 
-            factor_rows = session.execute(
-                select(
-                    FactorResult,
-                    Factor,
-                )
-                .join(
-                    Factor,
-                    FactorResult.factor_id
-                    == Factor.factor_id,
-                )
-                .where(
-                    FactorResult.record_id
-                    == record.record_id
-                )
-                .order_by(Factor.display_order)
-            ).all()
-
-            for result, factor in factor_rows:
+            for result, factor in factor_results_by_record.get(
+                record.record_id, []
+            ):
                 row["factors"][factor.factor_name] = {
                     "participants_count": result.participants_count,
                     "previous_value": _decimal_to_float(
@@ -578,7 +580,6 @@ def _calculate_overall_csat(factor_results):
 def prepare_uploaded_records(
     dataframe,
     data_mode,
-    entity_column,
     service_column,
     section_column=None,
     fixed_section=None,
@@ -603,9 +604,6 @@ def prepare_uploaded_records(
     """
     تجهيز ملف Excel للحفظ.
 
-    يدعم وجود أكثر من جهة حكومية داخل الملف نفسه؛
-    كل صف يأخذ الجهة من entity_column.
-
     raw:
         يحسب نتيجة مستقلة لكل عامل من العوامل السبعة.
 
@@ -617,22 +615,6 @@ def prepare_uploaded_records(
 
     data = dataframe.copy()
     available_columns = data.columns.tolist()
-
-    # الجهة الحكومية
-    if entity_column not in available_columns:
-        raise ValueError(
-            f"عمود الجهة الحكومية غير موجود في الملف: {entity_column}"
-        )
-
-    data["_entity"] = (
-        data[entity_column]
-        .apply(_clean_text)
-    )
-
-    if (data["_entity"] == "").any():
-        raise ValueError(
-            "يوجد صف بدون اسم جهة حكومية."
-        )
 
     if service_column not in available_columns:
         raise ValueError(
@@ -770,7 +752,6 @@ def prepare_uploaded_records(
 
     grouped_data = data.groupby(
         [
-            "_entity",
             "_section",
             "_service",
             "_year",
@@ -783,7 +764,6 @@ def prepare_uploaded_records(
     prepared_records = []
 
     for (
-        entity,
         section,
         service,
         year,
@@ -891,10 +871,9 @@ def prepare_uploaded_records(
 
         prepared_records.append(
             {
-                "entity": str(entity).strip(),
                 "section": str(section).strip(),
 
-                # مؤقتًا للتوافق مع الصفحات القديمة.
+                # مؤقتًا للتوافق مع entry_backend القديم.
                 "department": str(section).strip(),
 
                 "service": str(service).strip(),
