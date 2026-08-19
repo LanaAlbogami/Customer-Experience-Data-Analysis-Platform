@@ -47,6 +47,7 @@ class Action(Base):
     creation_date = Column(Date, nullable=True)
     start_date = Column(Date, nullable=True)
     expected_execution_date = Column(Date, nullable=True, name="Expected execution date")
+    actual_execution_date = Column(Date, nullable=True, name="actual_execution_date")
     
     section_id = Column(Integer, ForeignKey("sections.section_ID", ondelete="CASCADE"), nullable=False, name="section_ID")
     product_id = Column(Integer, ForeignKey("products.product_ID", ondelete="CASCADE"), nullable=False, name="product_ID")
