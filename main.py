@@ -27,6 +27,11 @@ _DEPARTMENTS_DIR = str(Path(__file__).parent / "Departments")
 if _DEPARTMENTS_DIR not in sys.path:
     sys.path.insert(0, _DEPARTMENTS_DIR)
 
+# Same as above, but for the Initiatives/ folder.
+_INITIATIVES_DIR = str(Path(__file__).parent / "Initiatives")
+if _INITIATIVES_DIR not in sys.path:
+    sys.path.insert(0, _INITIATIVES_DIR)
+
 # Landing-page colours.
 BG = COLORS["navy"]                  # Page background — from style.py.
 CARD_HOVER = COLORS["navy_light"]    # Card colour on hover — from style.py.
