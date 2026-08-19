@@ -441,6 +441,11 @@ def _departments_pages():
             title="رضا الجهات الحكومية",
             icon=":material/apartment:",
         ),
+        st.Page(
+            "Initiatives/data_upload_initiatives.py",
+            title="رفع بيانات المبادرات",
+            icon=":material/rocket_launch:",
+        ),
     ]
 
 
