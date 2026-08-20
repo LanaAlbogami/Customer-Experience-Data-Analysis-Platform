@@ -100,7 +100,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 </style>
 """, unsafe_allow_html=True)
 
-from data_service import fetch_records_from_db
+from data_service import fetch_records_with_entity
 
 
 def _num(value):
@@ -121,7 +121,7 @@ def _csat_tier(value):
     return "badge-bad"
 
 
-all_records = fetch_records_from_db()
+all_records = fetch_records_with_entity()
 
 if not all_records:
     st.warning("لا توجد بيانات بعد بقاعدة البيانات")
@@ -180,9 +180,8 @@ entity_factor_values = defaultdict(lambda: defaultdict(list))
 for r in records:
     entity_name = r["entity"]
     for factor_name, factor_data in r.get("factors", {}).items():
-        # نتجاهل العامل لو عدد المشاركين فيه صفر أو فاضي — هذا معناه
-        # "ما فيه بيانات فعلية"، مو تقييم حقيقي بصفر، وإدخاله بالمتوسط
-        # كان يسحب الرقم تحت شوي بدون سبب حقيقي.
+        # نتجاهل العامل لو عدد المشاركين فيه صفر أو فاضي —
+        # هذا معناه "ما فيه بيانات فعلية"، مو تقييم حقيقي بصفر.
         participants = factor_data.get("participants_count")
         if not participants:
             continue
@@ -239,6 +238,7 @@ overall_csat = (
     if overall_factor_averages
     else None
 )
+
 best_entity = sorted_entities[0] if sorted_entities else None
 worst_entity = sorted_entities[-1] if sorted_entities else None
 

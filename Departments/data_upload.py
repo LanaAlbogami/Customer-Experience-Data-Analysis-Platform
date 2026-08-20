@@ -22,6 +22,7 @@ from column_mapper_ai import map_section_columns_with_ai
 from data_service import (
     CALCULATED_DATA,
     RAW_DATA,
+    fetch_records_from_db,
     prepare_uploaded_records,
 )
 from entry_backend import get_factors, save_uploaded_records
@@ -1162,6 +1163,10 @@ if save_clicked:
             )
 
         if result["ok"]:
+            # نمسح الكاش فورًا عشان الداشبورد يجيب البيانات
+            # الجديدة على طول، بدل ما ينتظر 5 دقايق (TTL الكاش).
+            fetch_records_from_db.clear()
+
             st.success(
                 "تم حفظ البيانات بنجاح. "
                 f"السجلات الجديدة: "
