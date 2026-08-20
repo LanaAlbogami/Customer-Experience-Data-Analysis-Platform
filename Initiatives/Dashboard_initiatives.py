@@ -122,21 +122,13 @@ ALL = "الكل"
 # ألوان الحالات: نطابق ألوان المخطط في التصميم للحالات المعروفة،
 # وأي حالة غير معروفة تأخذ لونًا من قائمة احتياطية بترتيب ثابت.
 STATUS_COLOR_MAP = {
-    "منجز": "#4C6EF5",
-    "منجزة": "#4C6EF5",
-    "لا ينطبق": "#9775FA",
-    "تم الحل": "#F0A860",
-    "تم الاسناد": "#FFD43B",
+    "منجز": "#725BF8",
+    "لا ينطبق": "#6A6D7E",
+    "تم الحل": "#2FA88E",
     "تم الإسناد": "#FFD43B",
-    "الغيت": "#2FA88E",
-    "ألغيت": "#2FA88E",
-    "ملغاة": "#2FA88E",
-    "تحت الاجراء": "#63D2E8",
-    "تحت الإجراء": "#63D2E8",
-    "قيد التنفيذ": "#63D2E8",
-    "متأخر": "#8B6F5C",
-    "متأخرة": "#8B6F5C",
-    "مخطط لها": "#B0B7C9",
+    "ألغيت": "#BA625D",
+    "تحت الإجراء": "#63A1E8",
+    "متأخر": "#F0A860",
 }
 
 FALLBACK_PALETTE = [
@@ -353,38 +345,40 @@ with chart_col:
         if HAVE_PLOTLY_EVENTS:
             # النقر الحقيقي على شرائح الرسمة عبر مكوّن streamlit-plotly-events.
             #
-            # نستخدم مفتاحًا متغيّرًا: بعد كل نقرة نجدّد المكوّن حتى نلتقط
-            # النقرة التالية حتى لو كانت على نفس الشريحة. هذا يسمح بالتبديل
-            # (toggle): ضغطة على شريحة تحدّدها، وضغطة ثانية على نفس الشريحة
-            # تلغي التحديد وتعيد عرض الإجمالي. كما يمنع إعادة معالجة نفس
-            # النقرة عند أي تحديث آخر للصفحة (مثل تغيير الفلاتر).
-            run_key = st.session_state.get("init_pie_key", 0)
-
+            # نستخدم مفتاحًا ثابتًا حتى لا يُعاد تحميل الرسمة عند كل نقرة
+            # (تغيير المفتاح يعيد بناء المكوّن ويسبّب وميضًا/إعادة تحميل).
+            # المكوّن يرجّع آخر نقرة باستمرار، لذلك نتعامل مع النقرة الجديدة
+            # فقط عندما تختلف عن آخر نقرة عولجت — وهذا يمنع أيضًا إلغاء
+            # التحديد بالخطأ عند تغيير الفلاتر.
             clicked = plotly_events(
                 pie,
                 click_event=True,
                 override_height=440,
                 override_width="100%",
-                key=f"init_pie_events_{run_key}",
+                key="init_pie_events",
             )
 
-            if clicked:
-                index = clicked[0].get("pointNumber")
+            raw_click = clicked or None
+            if raw_click and raw_click != st.session_state.get(
+                "init_pie_last_click"
+            ):
+                st.session_state["init_pie_last_click"] = raw_click
+
+                index = raw_click[0].get("pointNumber")
                 if index is None:
-                    index = clicked[0].get("pointIndex")
+                    index = raw_click[0].get("pointIndex")
 
                 if isinstance(index, int) and 0 <= index < len(labels):
-                    clicked_status = labels[index]
-                    current = st.session_state.get("init_pie_status")
-                    # نفس الشريحة تلغي التحديد، وأي شريحة أخرى تبدّله.
-                    st.session_state["init_pie_status"] = (
-                        None if clicked_status == current else clicked_status
-                    )
-
-                # نجدّد المكوّن لالتقاط النقرة القادمة (حتى لو نفس الشريحة).
-                st.session_state["init_pie_key"] = run_key + 1
+                    st.session_state["init_pie_status"] = labels[index]
 
             selected_status = st.session_state.get("init_pie_status")
+
+            # زر صغير لإلغاء التحديد يظهر فقط عند وجود تحديد.
+            # الرسمة تبقى ثابتة (نفس المفتاح) فلا يحدث أي إعادة تحميل.
+            if selected_status:
+                if st.button("✕ إلغاء التحديد وعرض الكل", key="init_pie_clear"):
+                    st.session_state["init_pie_status"] = None
+                    selected_status = None
         else:
             # احتياطي: إن لم يكن المكوّن مثبتًا، نعرض الرسمة عاديًا مع محدّد حالات.
             st.plotly_chart(
