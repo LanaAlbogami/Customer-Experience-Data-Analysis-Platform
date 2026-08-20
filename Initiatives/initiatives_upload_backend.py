@@ -95,6 +95,7 @@ def prepare_initiative_records(
     product_column: str,
     initiative_column: str,
     status_column: str,
+    number_column: str | None = None,
     creation_date_column: str | None = None,
     start_date_column: str | None = None,
     expected_execution_date_column: str | None = None,
@@ -132,16 +133,21 @@ def prepare_initiative_records(
             product_name = _clean_text(_get_cell(row, product_column))
             action_name = _clean_text(_get_cell(row, initiative_column))
             status_name = _clean_text(_get_cell(row, status_column))
+            initiative_number = _clean_text(_get_cell(row, number_column))
+
+            required_values = [
+                ("القسم", section_name),
+                ("المنتج", product_name),
+                ("اسم المبادرة", action_name),
+                ("الحالة", status_name),
+            ]
+
+            # رقم المبادرة مطلوب فقط إذا تم ربط عموده.
+            if number_column:
+                required_values.append(("رقم المبادرة", initiative_number))
 
             row_missing = [
-                label
-                for label, value in (
-                    ("القسم", section_name),
-                    ("المنتج", product_name),
-                    ("اسم المبادرة", action_name),
-                    ("الحالة", status_name),
-                )
-                if not value
+                label for label, value in required_values if not value
             ]
 
             if row_missing:
@@ -180,6 +186,7 @@ def prepare_initiative_records(
                     "product_name": product_name,
                     "action_name": action_name,
                     "status_name": status_name,
+                    "initiative_number": initiative_number,
                     "creation_date": creation_date,
                     "start_date": start_date,
                     "expected_execution_date": expected_execution_date,
@@ -304,19 +311,30 @@ def save_initiative_records(
                 section = get_or_create_section(item["section_name"])
                 product = get_or_create_product(item["product_name"], section)
                 status = get_or_create_status(item["status_name"])
+                number = item.get("initiative_number")
 
-                # هل توجد مبادرة بنفس الاسم داخل نفس القسم والمنتج؟
-                existing_action = session.scalar(
-                    select(Action).where(
-                        Action.action_name == item["action_name"],
-                        Action.section_id == section.section_id,
-                        Action.product_id == product.product_id,
+                # التعرّف على المبادرة الموجودة:
+                # - إن توفّر رقم المبادرة فهو المعرّف (أدق وأضمن).
+                # - وإلا نرجع للتطابق بالاسم داخل نفس القسم والمنتج.
+                if number:
+                    existing_action = session.scalar(
+                        select(Action).where(
+                            Action.initiative_number == number
+                        )
                     )
-                )
+                else:
+                    existing_action = session.scalar(
+                        select(Action).where(
+                            Action.action_name == item["action_name"],
+                            Action.section_id == section.section_id,
+                            Action.product_id == product.product_id,
+                        )
+                    )
 
                 if existing_action is None:
                     action = Action(
                         action_name=item["action_name"],
+                        initiative_number=number,
                         section_id=section.section_id,
                         product_id=product.product_id,
                         status_id=status.status_id,
@@ -332,8 +350,13 @@ def save_initiative_records(
                     session.add(action)
                     created_actions += 1
                 else:
-                    # تحديث الحالة دائمًا، والتواريخ فقط عند توفّر قيمة جديدة.
+                    # عند التطابق بالرقم، نحدّث بقية الحقول أيضًا (الرقم هو الهوية).
                     existing_action.status_id = status.status_id
+
+                    if number:
+                        existing_action.action_name = item["action_name"]
+                        existing_action.section_id = section.section_id
+                        existing_action.product_id = product.product_id
 
                     if item.get("creation_date") is not None:
                         existing_action.creation_date = item["creation_date"]

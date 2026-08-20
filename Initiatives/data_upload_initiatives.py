@@ -143,6 +143,7 @@ NO_COLUMN = "غير موجود"
 
 # الحقول المطلوبة والاختيارية مع تسمياتها العربية.
 REQUIRED_FIELDS = {
+    "number_column": "رقم المبادرة",
     "section_column": "القسم",
     "product_column": "المنتج",
     "initiative_column": "اسم المبادرة",
@@ -449,6 +450,7 @@ if save_clicked:
                 product_column=selected["product_column"],
                 initiative_column=selected["initiative_column"],
                 status_column=selected["status_column"],
+                number_column=selected.get("number_column"),
                 creation_date_column=selected.get("creation_date_column"),
                 start_date_column=selected.get("start_date_column"),
                 expected_execution_date_column=selected.get(

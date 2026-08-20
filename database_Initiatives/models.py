@@ -44,6 +44,7 @@ class Action(Base):
 
     action_id = Column(Integer, primary_key=True, autoincrement=True, name="action_ID")
     action_name = Column(String(255), nullable=False, name="action_name")
+    initiative_number = Column(String(100), nullable=True, name="initiative_number")
     creation_date = Column(Date, nullable=True)
     start_date = Column(Date, nullable=True)
     expected_execution_date = Column(Date, nullable=True, name="Expected execution date")

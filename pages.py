@@ -442,6 +442,11 @@ def _departments_pages():
             icon=":material/apartment:",
         ),
         st.Page(
+            "Initiatives/Dashboard_initiatives.py",
+            title="لوحة معلومات المبادرات",
+            icon=":material/donut_large:",
+        ),
+        st.Page(
             "Initiatives/data_upload_initiatives.py",
             title="رفع بيانات المبادرات",
             icon=":material/rocket_launch:",

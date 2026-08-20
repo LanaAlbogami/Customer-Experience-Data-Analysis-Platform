@@ -43,6 +43,12 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
 
 # الحقول التي نطابقها. المفتاح = الاسم البرمجي، القيمة = كلمات مفتاحية للتخمين.
 FIELD_KEYWORDS: dict[str, list[str]] = {
+    "number_column": [
+        "رقم المبادرة", "رقم المبادره", "رقم", "المعرف", "المعرّف",
+        "رمز المبادرة", "رمز", "الرقم", "رقم الطلب", "معرف المبادرة",
+        "initiative number", "initiative id", "number", "no", "code",
+        "ref", "id",
+    ],
     "section_column": [
         "قسم", "القسم", "الاقسام", "الأقسام", "قطاع", "القطاع",
         "ادارة", "الادارة", "الإدارة", "section", "department", "sector",
@@ -51,13 +57,14 @@ FIELD_KEYWORDS: dict[str, list[str]] = {
         "منتج", "المنتج", "المنتجات", "خدمة", "الخدمة", "الخدمات",
         "product", "service",
     ],
-    "initiative_column": [
-        "مبادرة", "المبادرة", "المبادرات", "اسم المبادرة", "اجراء", "إجراء",
-        "الاجراء", "الإجراء", "المهمة", "العمل", "النشاط",
-        "initiative", "action", "task", "activity", "name",
-    ],
     "status_column": [
-        "حالة", "الحالة", "الوضع", "المرحلة", "status", "state", "stage",
+        "حالة المبادرة", "حالة", "الحالة", "الوضع", "المرحلة",
+        "status", "state", "stage",
+    ],
+    "initiative_column": [
+        "عنوان المبادرة", "اسم المبادرة", "عنوان", "مبادرة", "المبادرة",
+        "المبادرات", "اجراء", "إجراء", "الاجراء", "الإجراء", "المهمة",
+        "العمل", "النشاط", "initiative", "action", "task", "activity", "name",
     ],
     "creation_date_column": [
         "تاريخ الانشاء", "تاريخ الإنشاء", "الانشاء", "الإنشاء", "تاريخ الادخال",
@@ -82,6 +89,7 @@ FIELD_KEYWORDS: dict[str, list[str]] = {
 
 def _empty_result() -> dict[str, Any]:
     return {
+        "number_column": None,
         "section_column": None,
         "product_column": None,
         "initiative_column": None,
@@ -166,6 +174,7 @@ def _map_with_gemini(column_names: list[str]) -> dict[str, Any]:
     from pydantic import BaseModel
 
     class InitiativeColumnMapping(BaseModel):
+        number_column: str | None
         section_column: str | None
         product_column: str | None
         initiative_column: str | None
@@ -192,6 +201,7 @@ def _map_with_gemini(column_names: list[str]) -> dict[str, Any]:
 1. استخدم فقط أسماء الأعمدة الموجودة في القائمة أعلاه حرفيًا.
 2. لا تفترض أي قيمة من داخل الصفوف.
 3. طابق الحقول التالية:
+   - number_column = رقم المبادرة أو معرّفها أو رمزها.
    - section_column = اسم القسم أو الإدارة أو القطاع.
    - product_column = اسم المنتج أو الخدمة.
    - initiative_column = اسم المبادرة أو الإجراء أو المهمة.
@@ -232,6 +242,7 @@ def _map_with_gemini(column_names: list[str]) -> dict[str, Any]:
         return None
 
     return {
+        "number_column": valid(parsed.number_column),
         "section_column": valid(parsed.section_column),
         "product_column": valid(parsed.product_column),
         "initiative_column": valid(parsed.initiative_column),
