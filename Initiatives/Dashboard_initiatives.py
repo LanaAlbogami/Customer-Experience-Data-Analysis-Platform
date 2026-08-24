@@ -1,15 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Initiatives/Dashboard_initiatives.py
-------------------------------------
-لوحة معلومات المبادرات.
-
-- كل البيانات تُقرأ من قاعدة بيانات المبادرات.
-- الفترات تُحسب كأرباع (الربع الأول..الرابع) اعتمادًا على تاريخ الإنشاء.
-- الرسم الدائري (Pie) يعرض نسب المبادرات حسب حالتها، ويتغيّر تفاعليًا
-  مع الفلاتر (السنة، الفترة، القطاع، الخدمة).
-"""
-
 from __future__ import annotations
 
 import os
@@ -18,12 +7,14 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import pandas as pd
+import html
+import json
+
 import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy import select
 
-# مكوّن اختياري لالتقاط النقر على شرائح الرسمة مباشرةً من Plotly.
+# Optional component for capturing clicks on pie slices directly from Plotly.
 try:
     from streamlit_plotly_events import plotly_events
 
@@ -38,12 +29,9 @@ from style import apply_theme
 
 apply_theme()
 
+# Data loading and quarter calculation
 
-# ==================================================
-# قراءة البيانات وحساب الأرباع (مدمجة في نفس ملف الداشبورد)
-# ==================================================
-
-# ترتيب الأرباع المعتمد.
+# Canonical quarter order.
 QUARTERS = [
     "الربع الأول",
     "الربع الثاني",
@@ -53,7 +41,7 @@ QUARTERS = [
 
 
 def quarter_from_date(value):
-    """إرجاع اسم الربع اعتمادًا على شهر تاريخ الإنشاء، أو None إذا لا يوجد تاريخ."""
+    """Return the quarter name from the date's month, or None if there is no date."""
     if value is None:
         return None
 
@@ -67,16 +55,18 @@ def quarter_from_date(value):
 @st.cache_data(ttl=300, show_spinner="جاري تحميل بيانات المبادرات...")
 def fetch_initiatives():
     """
-    إرجاع كل المبادرات من قاعدة البيانات كقائمة قواميس جاهزة للعرض والفلترة.
+    Return all initiatives from the database as a list of dicts ready for
+    display and filtering.
 
-    كل عنصر يحتوي: رقم المبادرة، القطاع، المنتج، الحالة، عنوان المبادرة،
-    التواريخ الأربعة، بالإضافة إلى السنة والربع المحسوبين من تاريخ الإنشاء.
+    Each item holds: initiative number, sector, product, status, title, and
+    the four date fields.
     """
     with SessionLocal() as session:
         rows = session.execute(
             select(
                 Action.action_id,
                 Action.action_name,
+                Action.initiative_number,
                 Action.creation_date,
                 Action.start_date,
                 Action.expected_execution_date,
@@ -94,37 +84,33 @@ def fetch_initiatives():
     records = []
 
     for row in rows:
-        creation_date = row.creation_date
-        year = creation_date.year if creation_date is not None else None
-
         records.append(
             {
                 "action_id": row.action_id,
+                "initiative_number": row.initiative_number,
                 "section": row.section_name,
                 "product": row.product_name,
                 "status": row.status_name,
                 "action_name": row.action_name,
-                "creation_date": creation_date,
+                "creation_date": row.creation_date,
                 "start_date": row.start_date,
                 "expected_execution_date": row.expected_execution_date,
                 "actual_execution_date": row.actual_execution_date,
-                "year": year,
-                "quarter": quarter_from_date(creation_date),
             }
         )
 
     return records
 
 
-# ثابت يمثّل خيار "الكل" في الفلاتر.
+# Constant representing the "All" option in the filters.
 ALL = "الكل"
 
-# ألوان الحالات: نطابق ألوان المخطط في التصميم للحالات المعروفة،
-# وأي حالة غير معروفة تأخذ لونًا من قائمة احتياطية بترتيب ثابت.
+# Status colors: match the mockup colors for known statuses,
+# any unknown status gets a color from the fallback palette in a stable order.
 STATUS_COLOR_MAP = {
-    "منجز": "#725BF8",
-    "لا ينطبق": "#6A6D7E",
-    "تم الحل": "#2FA88E",
+    "منجز": "#2FA88E",
+    "لاينطبق": "#50459C",
+    "تحت المراجعة": "#1A2269",
     "تم الإسناد": "#FFD43B",
     "ألغيت": "#BA625D",
     "تحت الإجراء": "#63A1E8",
@@ -137,8 +123,35 @@ FALLBACK_PALETTE = [
     "#3BA55D", "#A67CDB",
 ]
 
+# Opacity of non-selected slices when a status is selected (lower = more transparent).
+FADED_ALPHA = 0.25
 
-# Page styling (مستوحى من لوحة المعلومات الحالية)
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert a hex color to rgba with the given alpha (for non-selected slices)."""
+    value = hex_color.lstrip("#")
+    if len(value) == 3:
+        value = "".join(char * 2 for char in value)
+
+    red = int(value[0:2], 16)
+    green = int(value[2:4], 16)
+    blue = int(value[4:6], 16)
+    return f"rgba({red}, {green}, {blue}, {alpha})"
+
+
+class _NoModebar:
+    """Hide the Plotly mode bar in plotly_events by injecting config into the figure JSON."""
+
+    def __init__(self, figure):
+        self.figure = figure
+
+    def to_json(self):
+        payload = json.loads(self.figure.to_json())
+        payload["config"] = {"displayModeBar": False}
+        return json.dumps(payload)
+
+
+# Page styling
 
 st.markdown(
     """
@@ -197,7 +210,7 @@ st.markdown(
 st.title("لوحة معلومات المبادرات")
 
 
-# قراءة البيانات
+# Load data
 
 try:
     records = fetch_initiatives()
@@ -206,74 +219,112 @@ except Exception as error:
     st.stop()
 
 if not records:
-    st.warning("لا توجد مبادرات في قاعدة البيانات بعد. ارفعي ملفًا من صفحة رفع بيانات المبادرات.")
+    st.warning("لا توجد مبادرات في قاعدة البيانات بعد. ارفع ملفًا من صفحة رفع بيانات المبادرات.")
     st.stop()
 
 
-# الفلاتر: عرض حسب
+# Filters: "View by"
 
 st.subheader("عرض حسب")
 
-years = sorted({r["year"] for r in records if r["year"] is not None}, reverse=True)
+# Date field used for filtering (year and quarter are derived from it).
+DATE_BASIS = {
+    "تاريخ الإنشاء": "creation_date",
+    "تاريخ البدء": "start_date",
+}
+
+basis_label = st.selectbox(
+    "نوع التاريخ",
+    options=list(DATE_BASIS.keys()),
+    index=0,
+    key="init_dash_date_basis",
+)
+basis_field = DATE_BASIS[basis_label]
+
+
+def basis_year(record):
+    """Year of the record's selected date field (or None if empty)."""
+    value = record.get(basis_field)
+    return value.year if value is not None else None
+
+
+def basis_quarter(record):
+    """Quarter of the record's selected date field."""
+    return quarter_from_date(record.get(basis_field))
+
+
+years = sorted(
+    {basis_year(r) for r in records if basis_year(r) is not None},
+    reverse=True,
+)
 sections = sorted({r["section"] for r in records if r["section"]})
 
 filter_row1 = st.columns(2)
 filter_row2 = st.columns(2)
 
+# All filters are multi-select: leaving one empty means "All".
 with filter_row1[0]:
-    year_choice = st.selectbox(
+    year_choice = st.multiselect(
         "السنة",
-        options=[ALL, *years],
-        index=0,
-        key="init_dash_year",
+        options=years,
+        default=[],
+        key="init_dash_years",
+        placeholder="الكل",
     )
 
 with filter_row1[1]:
-    period_choice = st.selectbox(
+    period_choice = st.multiselect(
         "الفترة",
-        options=[ALL, *QUARTERS],
-        index=0,
-        key="init_dash_period",
+        options=QUARTERS,
+        default=[],
+        key="init_dash_periods",
+        placeholder="الكل",
     )
 
 with filter_row2[0]:
-    section_choice = st.selectbox(
+    section_choice = st.multiselect(
         "القطاع",
-        options=[ALL, *sections],
-        index=0,
-        key="init_dash_section",
+        options=sections,
+        default=[],
+        key="init_dash_sections",
+        placeholder="الكل",
     )
 
-# خيارات الخدمة (المنتج) تعتمد على القطاع المختار.
-if section_choice == ALL:
+# Service (product) options depend on the selected sectors.
+if not section_choice:
     products = sorted({r["product"] for r in records if r["product"]})
 else:
+    section_set = set(section_choice)
     products = sorted(
         {
             r["product"]
             for r in records
-            if r["product"] and r["section"] == section_choice
+            if r["product"] and r["section"] in section_set
         }
     )
 
 with filter_row2[1]:
-    product_choice = st.selectbox(
+    product_choice = st.multiselect(
         "الخدمة",
-        options=[ALL, *products],
-        index=0,
-        key="init_dash_product",
+        options=products,
+        default=[],
+        key="init_dash_products",
+        placeholder="الكل",
     )
 
 
 def passes_top_filters(record) -> bool:
-    """هل يمرّ السجل من فلاتر: السنة والفترة والقطاع والخدمة؟"""
-    if year_choice != ALL and record["year"] != year_choice:
+    """Does the record pass the year/period/sector/service filters? (empty = all)
+
+    Year and quarter are derived from the selected date field (creation or start).
+    """
+    if year_choice and basis_year(record) not in year_choice:
         return False
-    if period_choice != ALL and record["quarter"] != period_choice:
+    if period_choice and basis_quarter(record) not in period_choice:
         return False
-    if section_choice != ALL and record["section"] != section_choice:
+    if section_choice and record["section"] not in section_choice:
         return False
-    if product_choice != ALL and record["product"] != product_choice:
+    if product_choice and record["product"] not in product_choice:
         return False
     return True
 
@@ -281,14 +332,14 @@ def passes_top_filters(record) -> bool:
 filtered = [r for r in records if passes_top_filters(r)]
 
 
-# الرسم الدائري (حسب الحالة) + بطاقة عدد المبادرات
+# Pie chart (by status) + initiatives-count card
 
 status_counts: dict[str, int] = {}
 for record in filtered:
     status = record["status"] or "غير محدد"
     status_counts[status] = status_counts.get(status, 0) + 1
 
-# ألوان ثابتة لكل حالة (نفس اللون في كل الفلاتر).
+# Stable color per status (same color across all filters).
 all_statuses = sorted({r["status"] or "غير محدد" for r in records})
 color_for_status: dict[str, str] = {}
 fallback_index = 0
@@ -301,7 +352,7 @@ for status in all_statuses:
         ]
         fallback_index += 1
 
-# مسافة بين الفلاتر وبين الرسمة والكارد.
+# Spacing between the filters and the chart/card row.
 st.markdown("<div style='height: 40px'></div>", unsafe_allow_html=True)
 
 chart_col, kpi_col = st.columns([1.7, 1])
@@ -313,7 +364,26 @@ with chart_col:
     if status_counts:
         labels = list(status_counts.keys())
         values = list(status_counts.values())
-        colors = [color_for_status.get(label, "#7A7F94") for label in labels]
+        base_colors = [color_for_status.get(label, "#7A7F94") for label in labels]
+
+        # Current selection (from a previous click, or from the fallback selector).
+        if HAVE_PLOTLY_EVENTS:
+            current_selection = st.session_state.get("init_pie_status")
+        else:
+            segment_value = st.session_state.get("init_status_segment")
+            current_selection = (
+                segment_value if segment_value and segment_value != ALL else None
+            )
+
+        # When a status is selected: keep its slice at full color and fade the rest.
+        if current_selection in labels:
+            colors = [
+                color if label == current_selection
+                else _hex_to_rgba(color, FADED_ALPHA)
+                for label, color in zip(labels, base_colors)
+            ]
+        else:
+            colors = base_colors
 
         pie = go.Figure(
             go.Pie(
@@ -343,15 +413,9 @@ with chart_col:
         )
 
         if HAVE_PLOTLY_EVENTS:
-            # النقر الحقيقي على شرائح الرسمة عبر مكوّن streamlit-plotly-events.
-            #
-            # نستخدم مفتاحًا ثابتًا حتى لا يُعاد تحميل الرسمة عند كل نقرة
-            # (تغيير المفتاح يعيد بناء المكوّن ويسبّب وميضًا/إعادة تحميل).
-            # المكوّن يرجّع آخر نقرة باستمرار، لذلك نتعامل مع النقرة الجديدة
-            # فقط عندما تختلف عن آخر نقرة عولجت — وهذا يمنع أيضًا إلغاء
-            # التحديد بالخطأ عند تغيير الفلاتر.
+            # Real slice clicks via the streamlit-plotly-events component.
             clicked = plotly_events(
-                pie,
+                _NoModebar(pie),
                 click_event=True,
                 override_height=440,
                 override_width="100%",
@@ -369,18 +433,23 @@ with chart_col:
                     index = raw_click[0].get("pointIndex")
 
                 if isinstance(index, int) and 0 <= index < len(labels):
-                    st.session_state["init_pie_status"] = labels[index]
+                    new_status = labels[index]
+                    # Rerun immediately when the selection changes so the fade shows at once.
+                    if new_status != st.session_state.get("init_pie_status"):
+                        st.session_state["init_pie_status"] = new_status
+                        st.rerun()
 
             selected_status = st.session_state.get("init_pie_status")
 
-            # زر صغير لإلغاء التحديد يظهر فقط عند وجود تحديد.
-            # الرسمة تبقى ثابتة (نفس المفتاح) فلا يحدث أي إعادة تحميل.
+            # Small clear button shown only when something is selected.
+            # The chart stays stable (same key) so there is no reload.
             if selected_status:
                 if st.button("✕ إلغاء التحديد وعرض الكل", key="init_pie_clear"):
                     st.session_state["init_pie_status"] = None
-                    selected_status = None
+                    # Rerun immediately to remove the fade.
+                    st.rerun()
         else:
-            # احتياطي: إن لم يكن المكوّن مثبتًا، نعرض الرسمة عاديًا مع محدّد حالات.
+            # Fallback: if the component is not installed, show a plain chart with a status selector.
             st.plotly_chart(
                 pie,
                 use_container_width=True,
@@ -403,11 +472,11 @@ with chart_col:
 
 with kpi_col:
     if selected_status:
-        # عند اختيار حالة: عدد مبادراتها ونسبتها من الإجمالي المفلتر.
+        # When a status is selected: its count and share of the filtered total.
         count_value = status_counts.get(selected_status, 0)
         count_label = f"عدد المبادرات ({selected_status})"
     else:
-        # بدون اختيار: الإجمالي و100%.
+        # No selection: the total and 100%.
         count_value = total_filtered
         count_label = "عدد المبادرات"
 
@@ -429,31 +498,53 @@ with kpi_col:
     )
 
 
-# تفاصيل المبادرات
+# Initiatives details
 
 st.markdown('<div class="block-title">تفاصيل المبادرات</div>', unsafe_allow_html=True)
 
 statuses_in_view = sorted({r["status"] or "غير محدد" for r in filtered})
 
-table_status_choice = st.selectbox(
-    "حالة المبادرة",
-    options=["كل الحالات", *statuses_in_view],
-    index=0,
-    key="init_dash_table_status",
-)
+table_controls = st.columns([2, 1])
 
-if table_status_choice == "كل الحالات":
+# Multi-select filter: pick one or more statuses. Empty shows all statuses.
+with table_controls[0]:
+    table_status_choice = st.multiselect(
+        "حالة المبادرة",
+        options=statuses_in_view,
+        default=[],
+        key="init_dash_table_statuses",
+        placeholder="كل الحالات",
+    )
+
+# Sort by the same date field selected above (creation or start).
+with table_controls[1]:
+    sort_order = st.selectbox(
+        f"الترتيب حسب {basis_label}",
+        options=["الأحدث أولًا", "الأقدم أولًا"],
+        index=0,
+        key="init_dash_table_sort",
+    )
+
+if not table_status_choice:
     table_records = filtered
 else:
+    selected_statuses = set(table_status_choice)
     table_records = [
-        r for r in filtered if (r["status"] or "غير محدد") == table_status_choice
+        r for r in filtered if (r["status"] or "غير محدد") in selected_statuses
     ]
+
+# Sort rows by the chosen date; rows without a date always go last.
+newest_first = sort_order == "الأحدث أولًا"
+dated = [r for r in table_records if r.get(basis_field) is not None]
+undated = [r for r in table_records if r.get(basis_field) is None]
+dated.sort(key=lambda r: r[basis_field], reverse=newest_first)
+table_records = dated + undated
 
 st.caption(f"عدد النتائج: {len(table_records):,}")
 
 
 def _fmt_date(value) -> str:
-    """عرض التاريخ بصيغة YYYY-MM-DD، أو شرطة عند غيابه."""
+    """Format a date as YYYY-MM-DD, or a dash when missing."""
     if value is None:
         return "—"
     try:
@@ -462,23 +553,57 @@ def _fmt_date(value) -> str:
         return str(value)
 
 
-# بناء صفوف الجدول بالترتيب الظاهر في التصميم.
-table_rows = [
-    {
-        "رقم المبادرة": r["action_id"],
-        "القطاع": r["section"],
-        "المنتج": r["product"],
-        "حالة المبادرة": r["status"],
-        "عنوان المبادرة": r["action_name"],
-        "تاريخ الانشاء": _fmt_date(r["creation_date"]),
-        "تاريخ بدء المبادرة": _fmt_date(r["start_date"]),
-        "التاريخ المتوقع للتنفيذ": _fmt_date(r["expected_execution_date"]),
-        "التاريخ الفعلي للتنفيذ": _fmt_date(r["actual_execution_date"]),
+# Table styling with the status column as a colored pill.
+st.markdown(
+    """
+    <style>
+    .init-table-wrap {
+        background: #FFFFFF;
+        border: 1px solid #E7E8F1;
+        border-radius: 16px;
+        overflow: auto;
+        max-height: 560px;
+        box-shadow: 0 5px 18px rgba(22, 33, 62, 0.05);
     }
-    for r in table_records
-]
+    .init-table { border-collapse: separate; border-spacing: 0; width: 100%; }
+    .init-table thead th {
+        position: sticky;
+        top: 0;
+        background: #F7F8FC;
+        color: #6B7398;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 14px 18px;
+        text-align: right;
+        white-space: nowrap;
+        border-bottom: 1px solid #EEF0F5;
+    }
+    .init-table tbody tr { transition: background 0.15s ease; }
+    .init-table tbody tr:nth-child(even) { background: #FAFBFD; }
+    .init-table tbody tr:hover { background: #F1EEFA; }
+    .init-table tbody td {
+        padding: 13px 18px;
+        color: #16213E;
+        font-size: 14px;
+        text-align: right;
+        white-space: nowrap;
+        border-bottom: 1px solid #F3F4F9;
+    }
+    .init-table td.title-cell { white-space: normal; min-width: 320px; }
+    .status-pill {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 800;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-column_order = [
+TABLE_HEADERS = [
     "رقم المبادرة",
     "القطاع",
     "المنتج",
@@ -490,12 +615,50 @@ column_order = [
     "التاريخ الفعلي للتنفيذ",
 ]
 
-if table_rows:
-    table_dataframe = pd.DataFrame(table_rows, columns=column_order)
-    st.dataframe(
-        table_dataframe,
-        use_container_width=True,
-        hide_index=True,
+
+def _cell(value) -> str:
+    """HTML-safe cell text."""
+    return html.escape("—" if value is None else str(value))
+
+
+def _status_pill(status: str) -> str:
+    """Render the status as a colored pill using the status's own color."""
+    color = color_for_status.get(status, "#6B7398")
+    background = _hex_to_rgba(color, 0.14)
+    return (
+        f'<span class="status-pill" '
+        f'style="background:{background}; color:{color};">'
+        f"{html.escape(str(status))}</span>"
+    )
+
+
+def _row_html(r) -> str:
+    return (
+        "<tr>"
+        f"<td>{_cell(r['initiative_number'])}</td>"
+        f"<td>{_cell(r['section'])}</td>"
+        f"<td>{_cell(r['product'])}</td>"
+        f"<td>{_status_pill(r['status'] or 'غير محدد')}</td>"
+        f"<td class='title-cell'>{_cell(r['action_name'])}</td>"
+        f"<td>{_cell(_fmt_date(r['creation_date']))}</td>"
+        f"<td>{_cell(_fmt_date(r['start_date']))}</td>"
+        f"<td>{_cell(_fmt_date(r['expected_execution_date']))}</td>"
+        f"<td>{_cell(_fmt_date(r['actual_execution_date']))}</td>"
+        "</tr>"
+    )
+
+
+if table_records:
+    header_html = "".join(f"<th>{h}</th>" for h in TABLE_HEADERS)
+    rows_html = "".join(_row_html(r) for r in table_records)
+
+    st.markdown(
+        f'<div class="init-table-wrap" dir="rtl">'
+        f'<table class="init-table">'
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{rows_html}</tbody>"
+        f"</table></div>",
+        unsafe_allow_html=True,
     )
 else:
     st.info("لا توجد مبادرات مطابقة للفلاتر المختارة.")
