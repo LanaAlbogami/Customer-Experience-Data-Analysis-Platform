@@ -108,9 +108,9 @@ ALL = "الكل"
 # Status colors: match the mockup colors for known statuses,
 # any unknown status gets a color from the fallback palette in a stable order.
 STATUS_COLOR_MAP = {
-    "منجز": "#725BF8",
-    "لا ينطبق": "#6A6D7E",
-    "تم الحل": "#2FA88E",
+    "منجز": "#2FA88E",
+    "لاينطبق": "#50459C",
+    "تحت المراجعة": "#1A2269",
     "تم الإسناد": "#FFD43B",
     "ألغيت": "#BA625D",
     "تحت الإجراء": "#63A1E8",
