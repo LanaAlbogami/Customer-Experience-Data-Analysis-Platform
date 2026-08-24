@@ -152,6 +152,12 @@ def show_landing():
         f"""
         <style>
 
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap');
+
+        .landing-title, .mode-card .label {{
+            font-family: 'Tajawal', sans-serif !important;
+        }}
+        
         [data-testid="stAppViewContainer"] {{
             background:{BG};
             direction:rtl;

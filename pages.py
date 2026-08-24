@@ -665,13 +665,13 @@ def _initiatives_pages():
         st.Page(
             "Initiatives/Dashboard_initiatives.py",
             title="لوحة معلومات المبادرات",
-            icon=":material/donut_large:",
+            icon=":material/dashboard:",
             default=True,
         ),
         st.Page(
             "Initiatives/data_upload_initiatives.py",
             title="رفع بيانات المبادرات",
-            icon=":material/rocket_launch:",
+            icon=":material/upload_file:",
         ),
     ]
 
