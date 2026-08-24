@@ -1,26 +1,28 @@
+# -*- coding: utf-8 -*-
+
 from pathlib import Path
+
 import streamlit as st
 from PIL import Image
 
 import app_mode
 
 
-# Prepare the logo and crop away the transparent padding
+# ==================================================
+# Logo
+# ==================================================
 
 def prepare_logo():
     original_logo = Path("LogoWhite.png")
     cropped_logo = Path("LogoWhite_cropped.png")
 
-    # No source logo? Just return its path and let the caller handle it.
     if not original_logo.exists():
         return original_logo
 
     try:
-        # Re-crop only if the cropped file is missing or the original is newer.
         should_crop = (
             not cropped_logo.exists()
-            or original_logo.stat().st_mtime
-            > cropped_logo.stat().st_mtime
+            or original_logo.stat().st_mtime > cropped_logo.stat().st_mtime
         )
 
         if should_crop:
@@ -53,10 +55,11 @@ def prepare_logo():
 LOGO_PATH = prepare_logo()
 
 
-# Page setup: config, logo, and styling
+# ==================================================
+# Page setup
+# ==================================================
 
 def setup():
-    # Basic page configuration (title, favicon, wide layout, open sidebar).
     st.set_page_config(
         page_title="منصة تجربة العميل",
         page_icon=str(LOGO_PATH),
@@ -64,19 +67,16 @@ def setup():
         initial_sidebar_state="expanded",
     )
 
-    # Show the logo in the sidebar if the file exists.
     if LOGO_PATH.exists():
         st.logo(
             str(LOGO_PATH),
             size="large",
         )
 
-    # Inject the app's global CSS: loads the Tajawal font, sets a
-    # right-to-left layout, styles the dark sidebar and its navigation,
-    # the login dialog, and the mode-switch toggle pinned to the bottom.
     st.markdown(
         """
         <style>
+
         @import url(
             'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&display=swap'
         );
@@ -116,6 +116,11 @@ def setup():
             font-family: "Tajawal", sans-serif !important;
         }
 
+
+        /* ==================================================
+           Sidebar
+           ================================================== */
+
         section[data-testid="stSidebar"] {
             background-color: #16213E !important;
             width: 320px !important;
@@ -128,12 +133,18 @@ def setup():
             background-color: #16213E !important;
             direction: rtl !important;
             text-align: right !important;
+            position: relative !important;
         }
 
         [data-testid="stSidebarContent"] {
             direction: rtl !important;
             padding: 18px 18px !important;
         }
+
+
+        /* ==================================================
+           Logo
+           ================================================== */
 
         section[data-testid="stSidebar"] [data-testid="stLogo"] {
             display: flex !important;
@@ -151,6 +162,11 @@ def setup():
             max-height: 200px !important;
             object-fit: contain !important;
         }
+
+
+        /* ==================================================
+           Sidebar navigation
+           ================================================== */
 
         [data-testid="stSidebarNav"] {
             direction: rtl !important;
@@ -214,8 +230,6 @@ def setup():
             color: #FFFFFF !important;
             direction: ltr !important;
             text-align: center !important;
-
-            shrink: 0 !important;
         }
 
         [data-testid="stSidebarNav"] a[aria-current="page"] {
@@ -254,6 +268,11 @@ def setup():
             visibility: hidden;
         }
 
+
+        /* ==========================
+           Password dialog
+        ========================== */
+
         div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
             text-align: right !important;
             direction: rtl !important;
@@ -266,21 +285,25 @@ def setup():
             visibility: hidden !important;
         }
 
-        div[data-testid="stDialog"] button:not([kind="header"]):not([data-testid="baseButton-header"]) {
+        div[data-testid="stDialog"]
+        button:not([kind="header"]):not([data-testid="baseButton-header"]) {
             background-color: #FFFFFF !important;
             color: #333333 !important;
             border: 1px solid rgba(49, 51, 63, 0.2) !important;
         }
-        
-        div[data-testid="stDialog"] button:not([kind="header"]):not([data-testid="baseButton-header"]):hover {
+
+        div[data-testid="stDialog"]
+        button:not([kind="header"]):not([data-testid="baseButton-header"]):hover {
             background-color: #F0F2F6 !important;
             color: #000000 !important;
             border-color: rgba(49, 51, 63, 0.4) !important;
         }
 
-        section[data-testid="stSidebar"] > div {
-            position: relative !important;
-        }
+
+        /* ==========================
+           Bottom toggle
+        ========================== */
+
         section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
             padding-bottom: 92px !important;
         }
@@ -324,33 +347,167 @@ def setup():
         [data-baseweb="checkbox"] * {
             transition: none !important;
         }
-        /* التوقل نفسه (track + thumb) — نرجّعه LTR عشان الكرة ما تطير */
+
         section[data-testid="stSidebar"] .st-key-mode_switch_box
         label[data-baseweb="checkbox"] > div:last-child,
         section[data-testid="stSidebar"] .st-key-mode_switch_box
         label[data-baseweb="checkbox"] > div:last-child * {
             direction: ltr !important;
         }
-        /* إجبار الكرة تلتصق يسار البيل وتتحرك يمين عند التفعيل */
+
         section[data-testid="stSidebar"] .st-key-mode_switch_box
         .st-emotion-cache-1hoeffx {
             direction: ltr !important;
             right: auto !important;
         }
+
+
+        /* ==========================
+           Home button
+        ========================== */
+
+        section[data-testid="stSidebar"] .st-key-home_button_box {
+            position: absolute !important;
+            top: 18px !important;
+            left: 18px !important;
+            width: 46px !important;
+            height: 46px !important;
+            z-index: 20 !important;
+        }
+
+        section[data-testid="stSidebar"] .st-key-home_button_box
+        [data-testid="stButton"] {
+            width: 46px !important;
+            height: 46px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        section[data-testid="stSidebar"] .st-key-home_button_box button {
+            width: 46px !important;
+            min-width: 46px !important;
+            max-width: 46px !important;
+
+            height: 46px !important;
+            min-height: 46px !important;
+            max-height: 46px !important;
+
+            padding: 0 !important;
+            margin: 0 !important;
+
+            background-color: transparent !important;
+            color: #FFFFFF !important;
+
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+
+            gap: 0 !important;
+        }
+
+        section[data-testid="stSidebar"] .st-key-home_button_box
+        button > div {
+            width: 100% !important;
+            height: 100% !important;
+
+            padding: 0 !important;
+            margin: 0 !important;
+
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+
+            gap: 0 !important;
+        }
+
+        section[data-testid="stSidebar"] .st-key-home_button_box button p {
+            display: none !important;
+        }
+
+        section[data-testid="stSidebar"] .st-key-home_button_box
+        span[data-testid="stIconMaterial"] {
+            color: #FFFFFF !important;
+            font-size: 26px !important;
+
+            width: 28px !important;
+            height: 28px !important;
+
+            padding: 0 !important;
+            margin: 0 !important;
+
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+
+            line-height: 28px !important;
+            text-align: center !important;
+
+            position: static !important;
+            transform: none !important;
+        }
+
+        section[data-testid="stSidebar"] .st-key-home_button_box button:hover {
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color: #FFFFFF !important;
+        }
+
+        section[data-testid="stSidebar"] .st-key-home_button_box button:focus,
+        section[data-testid="stSidebar"] .st-key-home_button_box button:active {
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color: #FFFFFF !important;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-# Toggle for switching between government and individuals modes
+# ==================================================
+# Home button
+# ==================================================
+
+def _sidebar_home_button():
+    with st.sidebar:
+        with st.container(key="home_button_box"):
+            if st.button(
+                "الصفحة الرئيسية",
+                icon=":material/home:",
+                key="home_button",
+                help="الصفحة الرئيسية",
+            ):
+                app_mode.clear_mode()
+
+                st.session_state.pop(
+                    "mode_switch",
+                    None,
+                )
+
+                st.query_params.clear()
+                st.rerun()
+
+
+# ==================================================
+# Individuals / Departments toggle
+# ==================================================
 
 def _sidebar_mode_toggle():
-    # Read the current mode; label the toggle with the *current* mode's name.
     current_is_individuals = app_mode.is_individuals()
-    label = "أفراد" if current_is_individuals else "جهات حكومية"
 
-    # Render the toggle inside a keyed container (styled by the CSS above).
+    label = (
+        "أفراد"
+        if current_is_individuals
+        else "جهات حكومية"
+    )
+
     with st.sidebar:
         with st.container(key="mode_switch_box"):
             is_individuals = st.toggle(
@@ -365,51 +522,76 @@ def _sidebar_mode_toggle():
         else "departments"
     )
 
-    # If the toggle changed the mode, save it and rerun to reload the pages.
     if new_mode != app_mode.get_mode():
         app_mode.set_mode(new_mode)
         st.rerun()
 
 
-# Password dialog that protects the management (edit) page
+# ==================================================
+# Management password
+# ==================================================
+
 CORRECT_PASSWORD = "123"
+
 
 @st.dialog("تسجيل الدخول لصفحة التعديل")
 def password_dialog():
-    st.markdown('<div style="text-align: right; direction: rtl; margin-bottom: 10px;">الرجاء إدخال كلمة السر للوصول إلى صفحة التعديل:</div>', unsafe_allow_html=True)
-    
-    password_input = st.text_input(
-        "كلمة السر", 
-        type="default", 
-        label_visibility="collapsed", 
-        placeholder="أدخل كلمة السر هنا..."
+    st.markdown(
+        """
+        <div style="
+            text-align: right;
+            direction: rtl;
+            margin-bottom: 10px;
+        ">
+            الرجاء إدخال كلمة السر للوصول إلى صفحة التعديل:
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    
+
+    password_input = st.text_input(
+        "كلمة السر",
+        type="default",
+        label_visibility="collapsed",
+        placeholder="أدخل كلمة السر هنا...",
+    )
+
     col1, col2 = st.columns(2)
-    
-    if col1.button("دخول", key="submit_pwd", use_container_width=True):
+
+    if col1.button(
+        "دخول",
+        key="submit_pwd",
+        use_container_width=True,
+    ):
         if password_input == CORRECT_PASSWORD:
             st.session_state["authenticated_management"] = True
             st.success("تم تسجيل الدخول بنجاح!")
             st.rerun()
         else:
-            st.error("كلمة السر غير صحيحة، حاول مرة أخرى.")
-            
-    if col2.button("إلغاء", key="cancel_pwd", use_container_width=True):
+            st.error(
+                "كلمة السر غير صحيحة، حاول مرة أخرى."
+            )
+
+    if col2.button(
+        "إلغاء",
+        key="cancel_pwd",
+        use_container_width=True,
+    ):
         st.session_state["authenticated_management"] = False
         st.switch_page("Departments/Dashboard.py")
 
 
-# Application page definitions
+# ==================================================
+# Departments pages
+# ==================================================
 
 def _departments_pages():
-    # The pages shown in "government departments" mode, in sidebar order.
     return [
         st.Page(
             "Departments/Dashboard.py",
             title="لوحة المعلومات",
             icon=":material/dashboard:",
-            default=True, # landing page for this mode
+            default=True,
         ),
         st.Page(
             "Departments/data_entry.py",
@@ -441,27 +623,20 @@ def _departments_pages():
             title="رضا الجهات الحكومية",
             icon=":material/apartment:",
         ),
-        st.Page(
-            "Initiatives/Dashboard_initiatives.py",
-            title="لوحة معلومات المبادرات",
-            icon=":material/donut_large:",
-        ),
-        st.Page(
-            "Initiatives/data_upload_initiatives.py",
-            title="رفع بيانات المبادرات",
-            icon=":material/rocket_launch:",
-        ),
     ]
 
 
+# ==================================================
+# Individuals pages
+# ==================================================
+
 def _individuals_pages():
-    # The pages shown in "individuals" mode, in sidebar order.
     return [
         st.Page(
             "Individuals/Dashboard_individuals.py",
             title="لوحة المعلومات",
             icon=":material/dashboard:",
-            default=True, # landing page for this mode
+            default=True,
         ),
         st.Page(
             "Individuals/data_upload_individuals.py",
@@ -481,43 +656,72 @@ def _individuals_pages():
     ]
 
 
+# ==================================================
+# Initiatives pages
+# ==================================================
+
+def _initiatives_pages():
+    return [
+        st.Page(
+            "Initiatives/Dashboard_initiatives.py",
+            title="لوحة معلومات المبادرات",
+            icon=":material/donut_large:",
+            default=True,
+        ),
+        st.Page(
+            "Initiatives/data_upload_initiatives.py",
+            title="رفع بيانات المبادرات",
+            icon=":material/rocket_launch:",
+        ),
+    ]
+
+
+# ==================================================
+# Select pages for mode
+# ==================================================
+
 def _pages_for(mode):
-    # Pick the page list based on the active mode (defaults to departments)
     if mode == "individuals":
         return _individuals_pages()
+
+    if mode == "initiatives":
+        return _initiatives_pages()
+
     return _departments_pages()
 
 
-# Run the application
+# ==================================================
+# Run application
+# ==================================================
 
 def run_app():
-
-    # Apply page config and styling.
     setup()
 
-    # Draw the mode-switch toggle in the sidebar.
-    _sidebar_mode_toggle()
-
-    # Determine the active mode (default to departments).
     mode = app_mode.get_mode() or "departments"
 
-    # Build the sidebar navigation from the mode's pages.
+    # زر الرجوع للرئيسية يظهر في الجميع.
+    _sidebar_home_button()
+
+    # التوقل فقط بين أفراد والجهات.
+    # لا يظهر داخل المبادرات.
+    if mode in ("departments", "individuals"):
+        _sidebar_mode_toggle()
+
     page = st.navigation(
         _pages_for(mode),
         position="sidebar",
         expanded=True,
     )
 
-    # Leaving the edit page clears authentication, so it's required again next time.
     if page.title != "التعديل":
         st.session_state["authenticated_management"] = False
 
-    # Entering the edit page requires the password dialog first.
     if page.title == "التعديل":
-        if not st.session_state.get("authenticated_management", False):
+        if not st.session_state.get(
+            "authenticated_management",
+            False,
+        ):
             password_dialog()
             st.stop()
 
-    # Render the selected page.
     page.run()
-
